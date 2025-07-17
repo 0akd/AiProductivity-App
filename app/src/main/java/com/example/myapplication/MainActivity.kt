@@ -4,13 +4,13 @@ package com.example.myapplication
 import android.content.Intent
 import android.net.Uri
 import kotlinx.coroutines.launch
-import androidx.compose.foundation.background
+
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
-import androidx.compose.material3.DrawerState
+
 import androidx.compose.material.icons.filled.Close
 import android.content.Context
 import android.content.SharedPreferences
@@ -33,18 +33,18 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.RectangleShape
+
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.example.myapplication.ui.theme.MyApplicationTheme
-import kotlinx.coroutines.launch
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -172,21 +172,9 @@ fun MainScreen() {
                         onPageLoaded = { url -> /* handle page load */ },
                         onError = { error -> /* handle error */ }
                     )
-                    "About Dev" -> {
-                        val context = LocalContext.current
-                        LaunchedEffect(Unit) {
-                            val intent = Intent(
-                                Intent.ACTION_VIEW,
-                                Uri.parse("https://arjundubey.vercel.app")
-                            )
-                            context.startActivity(intent)
-                        }
-                        // Show some UI while opening
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("Opening browser...")
-                        }
-                    }
-                    // Add other screens here
+                    "About Dev" -> AboutDevScreenroller(
+                        onReturn = { currentScreen = "Home" }
+                    )
                 }
             }
         }
@@ -233,6 +221,38 @@ fun getEmojiForScreen(screen: String): String {
         else -> "📄"
     }
 }
+@Composable
+fun AboutDevScreenroller(onReturn: () -> Unit) {
+    val context = LocalContext.current
+    var browserOpened by remember { mutableStateOf(false) }
+
+    // Open browser once
+    LaunchedEffect(Unit) {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://arjundubey.vercel.app"))
+        context.startActivity(intent)
+        browserOpened = true
+    }
+
+    // Detect when user returns to the app
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, browserOpened) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && browserOpened) {
+                onReturn() // Go to Home
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // UI while waiting
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Text("Opening browser...")
+    }
+}
+
 
 
 

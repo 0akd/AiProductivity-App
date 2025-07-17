@@ -13,6 +13,7 @@ kotlinx-serialization = "1.6.0"
 composeAnimationStable = "1.8.3"
 composeAnimationBeta = "1.9.0-beta03"
 material3-icons = "1.6.1"
+navigationRuntimeAndroid = "2.9.2"
 
 
 
@@ -48,6 +49,7 @@ androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 compose-animation = { group = "androidx.compose.animation", name = "animation", version.ref = "composeAnimationStable" }
 compose-animation-beta = { group = "androidx.compose.animation", name = "animation", version.ref = "composeAnimationBeta" }
+androidx-navigation-runtime-android = { group = "androidx.navigation", name = "navigation-runtime-android", version.ref = "navigationRuntimeAndroid" }
 
 
 [plugins]
