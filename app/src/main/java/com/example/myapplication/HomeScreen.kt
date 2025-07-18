@@ -17,7 +17,7 @@ fun HomeScreen() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(MaterialTheme.colorScheme.background) // 🔁 use themed background
             .padding(top = 80.dp, start = 20.dp, end = 20.dp, bottom = 20.dp)
     ) {
         Column(
@@ -30,7 +30,7 @@ fun HomeScreen() {
                 fontSize = 28.sp,
                 fontWeight = FontWeight.Bold,
                 lineHeight = 34.sp,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground // 🔁 use themed text color
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -42,7 +42,7 @@ fun HomeScreen() {
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground // 🔁 use themed text color
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -54,7 +54,7 @@ fun HomeScreen() {
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
-                color = Color.White
+                color = MaterialTheme.colorScheme.onBackground
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -65,7 +65,7 @@ fun HomeScreen() {
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
-                color = Color.White
+                color = MaterialTheme.colorScheme.primary // Optional: Give it an accent color
             )
         }
     }

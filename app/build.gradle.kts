@@ -3,6 +3,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.kotlin.compose)
+    id("com.google.gms.google-services")
 
 }
 
@@ -42,34 +43,82 @@ android {
 }
 
 dependencies {
-    implementation(platform(libs.androidx.compose.bom))
+    // Retrofit
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
 
-// Compose dependencies
-    implementation(libs.androidx.compose.ui)
-    implementation(libs.androidx.compose.ui.graphics)
-    implementation(libs.androidx.compose.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.compose.animation)
+// Coil for image loading
+    implementation("io.coil-kt:coil-compose:2.4.0")
+
+// Compose UI
+    implementation("androidx.activity:activity-compose:1.8.0")
+    implementation("androidx.compose.ui:ui:1.6.0")
+    implementation("androidx.compose.material:material:1.6.0")
+    implementation("com.google.android.material:material:1.11.0")
+    // Core Android
     implementation(libs.androidx.core.ktx)
-    implementation(libs.compose.animation)
-    implementation(libs.androidx.material.icons.extended)  // ✅ USE THIS
-
-
-
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.appcompat)
+    implementation(platform("com.google.firebase:firebase-bom:33.16.0"))
+    implementation("com.google.firebase:firebase-analytics")
+    // Compose BOM - manages all compose library versions
     implementation(platform(libs.androidx.compose.bom))
-    implementation(libs.androidx.ui)
-    implementation(libs.androidx.ui.graphics)
-    implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
-    implementation(libs.kotlinx.serialization.json)
+
+    // Compose UI
+    implementation(libs.bundles.compose)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.material.icons.extended)
+    implementation(libs.compose.animation)
+    implementation("com.google.code.gson:gson:2.10.1")
+
+// In app-level build.gradle
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
+    implementation("androidx.activity:activity-compose:1.7.2")
+    implementation("androidx.compose.ui:ui:1.5.0")
+    implementation("androidx.compose.material3:material3:1.1.1")
+    implementation("androidx.compose.ui:ui-tooling-preview:1.5.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // Lifecycle & ViewModel
+    implementation(libs.bundles.lifecycle)
+    implementation(libs.androidx.activity.compose)
+
+    // Navigation
     implementation(libs.androidx.navigation.runtime.android)
+    implementation("androidx.compose.ui:ui:1.3.1")
+    // Serialization
+    implementation(libs.kotlinx.serialization.json)
+    implementation("androidx.compose.foundation:foundation:1.6.0")
+
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+
+    // For web scraping (uncomment when needed)
+    // implementation(libs.bundles.networking)
+    implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
+    implementation("com.google.firebase:firebase-firestore-ktx:24.11.1")
+    implementation("com.google.android.gms:play-services-auth:21.0.0")
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
-    androidTestImplementation(libs.androidx.ui.test.junit4)
-    debugImplementation(libs.androidx.ui.tooling)
-    debugImplementation(libs.androidx.ui.test.manifest)
+    androidTestImplementation(libs.androidx.compose.ui.test.junit4)
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.bundles.lifecycle)
+    implementation(libs.androidx.activity.compose)
+
+    // Compose BOM
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.bundles.compose)
+
+    // Coroutines
+    implementation(libs.kotlinx.coroutines.android)
+
+
+    // Debug
+    debugImplementation(libs.androidx.compose.ui.tooling)
+    debugImplementation(libs.androidx.compose.ui.test.manifest)
 }

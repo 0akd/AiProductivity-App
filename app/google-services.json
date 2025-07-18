@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "101881111630",
+    "project_id": "appthelastupgrade",
+    "storage_bucket": "appthelastupgrade.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:101881111630:android:eba8f7bec4c87f2076cf1f",
+        "android_client_info": {
+          "package_name": "com.example.myapplication"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbHtLQZTBqogri7HI3XVfXg82zs_BrNfk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

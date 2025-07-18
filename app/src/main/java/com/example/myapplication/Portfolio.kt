@@ -1,7 +1,7 @@
+// Fixed missing parameter 'onClick' in WebsiteCard call
 package com.example.myapplication
 
 import android.annotation.SuppressLint
-import android.content.Context
 import android.graphics.Bitmap
 import android.os.Build
 import android.os.Message
@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -22,7 +24,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -32,12 +33,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
 // Data class for website information
-data class WebsiteInfo(
-    val title: String,
-    val url: String,
-    val description: String,
-    val iconRes: Int? = null // Optional icon resource
-)
+data class WebsiteInfo(val title: String, val url: String, val description: String)
 
 @Composable
 fun WebsiteCardsView(
@@ -49,7 +45,6 @@ fun WebsiteCardsView(
     var selectedWebsite by remember { mutableStateOf<WebsiteInfo?>(null) }
 
     Column(modifier = modifier) {
-        // Header
         Text(
             text = "Websites",
             style = MaterialTheme.typography.headlineMedium,
@@ -57,21 +52,16 @@ fun WebsiteCardsView(
             modifier = Modifier.padding(16.dp)
         )
 
-        // Website cards grid
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
         ) {
             items(websites) { website ->
-                WebsiteCard(
-                    website = website,
-                    onClick = { selectedWebsite = website }
-                )
+                WebsiteCard(website = website, onClick = { selectedWebsite = website })
             }
         }
 
-        // Show popup when website is selected
         selectedWebsite?.let { website ->
             PopupWebView(
                 url = website.url,
@@ -86,28 +76,17 @@ fun WebsiteCardsView(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun WebsiteCard(
-    website: WebsiteInfo,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
+fun WebsiteCard(website: WebsiteInfo, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+        modifier = modifier.fillMaxWidth().clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon placeholder (you can replace with actual icons)
             Box(
                 modifier = Modifier
                     .size(48.dp)
@@ -125,10 +104,7 @@ fun WebsiteCard(
 
             Spacer(modifier = Modifier.width(16.dp))
 
-            // Content
-            Column(
-                modifier = Modifier.weight(1f)
-            ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = website.title,
                     style = MaterialTheme.typography.titleMedium,
@@ -136,9 +112,7 @@ fun WebsiteCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
                     text = website.description,
                     style = MaterialTheme.typography.bodyMedium,
@@ -146,9 +120,7 @@ fun WebsiteCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-
                 Spacer(modifier = Modifier.height(4.dp))
-
                 Text(
                     text = website.url,
                     style = MaterialTheme.typography.bodySmall,
@@ -158,10 +130,9 @@ fun WebsiteCard(
                 )
             }
 
-            // Arrow icon
             Icon(
                 imageVector = androidx.compose.material.icons.Icons.Default.KeyboardArrowRight,
-                contentDescription = "Open website",
+                contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
             )
         }
@@ -177,33 +148,27 @@ fun PopupWebView(
     onPageLoaded: ((String?) -> Unit)? = null,
     onError: ((String?) -> Unit)? = null
 ) {
+    var isFullscreen by remember { mutableStateOf(false) }
+
     Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = true
-        )
+        properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.5f))
-                .clickable { onDismiss() },
+                .padding(if (isFullscreen) 0.dp else 16.dp),
             contentAlignment = Alignment.Center
         ) {
             Card(
                 modifier = Modifier
-                    .fillMaxWidth(0.9f)
-                    .fillMaxHeight(0.9f)
-                    .clickable(enabled = false) { }, // Prevent click propagation
-                shape = RoundedCornerShape(12.dp),
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+                    .fillMaxWidth()
+                    .fillMaxHeight(if (isFullscreen) 1f else 0.85f),
+                shape = RoundedCornerShape(if (isFullscreen) 0.dp else 16.dp),
+                elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Header with title and close button
+                Column(modifier = Modifier.fillMaxSize()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -213,36 +178,44 @@ fun PopupWebView(
                     ) {
                         Text(
                             text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
                             modifier = Modifier.weight(1f),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
 
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.size(32.dp)
-                        ) {
+                        // Fullscreen toggle
+                        IconButton(onClick = { isFullscreen = !isFullscreen }) {
                             Icon(
-                                imageVector = androidx.compose.material.icons.Icons.Default.Close,
+                                imageVector = if (isFullscreen)
+                                    Icons.Default.FullscreenExit
+                                else
+                                    Icons.Default.Fullscreen,
+                                contentDescription = "Toggle Fullscreen",
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
+                        // Close button
+                        IconButton(onClick = onDismiss) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         }
                     }
 
-                    Divider(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                    )
+                    Divider()
 
-                    // WebView content
+                    // WebView
                     SimpleWebView(
                         url = url,
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
                         onPageLoaded = onPageLoaded,
                         onError = onError
                     )
@@ -252,16 +225,17 @@ fun PopupWebView(
     }
 }
 
+
+
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun SimpleWebView(
     url: String,
-    modifier: Modifier = Modifier.fillMaxSize(),
+    modifier: Modifier = Modifier,
     onPageLoaded: ((String?) -> Unit)? = null,
     onError: ((String?) -> Unit)? = null
 ) {
     val context = LocalContext.current
-
     AndroidView(
         factory = { ctx ->
             WebView(ctx).apply {
@@ -278,56 +252,31 @@ private fun WebView.setupWebView(
     onPageLoaded: ((String?) -> Unit)? = null,
     onError: ((String?) -> Unit)? = null
 ) {
-    // Basic WebView settings - minimal and safe
     settings.apply {
-        // Essential settings
         javaScriptEnabled = true
         domStorageEnabled = true
-
-        // Viewport settings for proper display
         useWideViewPort = true
         loadWithOverviewMode = true
-
-        // Basic zoom settings
         setSupportZoom(true)
         builtInZoomControls = true
         displayZoomControls = false
-
-        // Performance settings
         cacheMode = WebSettings.LOAD_DEFAULT
-
-        // Content settings
         allowFileAccess = true
         allowContentAccess = true
         loadsImagesAutomatically = true
-
-        // Modern security features
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
         }
-
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             safeBrowsingEnabled = true
         }
-
-        // User agent - use default browser user agent
         userAgentString = WebSettings.getDefaultUserAgent(context)
     }
 
-    // Set up WebViewClient - minimal intervention
     webViewClient = object : WebViewClient() {
-        override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
-            super.onPageStarted(view, url, favicon)
-        }
-
         override fun onPageFinished(view: WebView?, url: String?) {
             super.onPageFinished(view, url)
             onPageLoaded?.invoke(url)
-        }
-
-        override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-            // Let WebView handle all URLs normally
-            return false
         }
 
         override fun onReceivedError(
@@ -335,7 +284,6 @@ private fun WebView.setupWebView(
             request: WebResourceRequest?,
             error: WebResourceError?
         ) {
-            super.onReceivedError(view, request, error)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 onError?.invoke(error?.description?.toString())
             }
@@ -348,77 +296,26 @@ private fun WebView.setupWebView(
             description: String?,
             failingUrl: String?
         ) {
-            super.onReceivedError(view, errorCode, description, failingUrl)
             onError?.invoke(description)
         }
     }
 
-    // Set up WebChromeClient for popup support
-    webChromeClient = object : WebChromeClient() {
-        override fun onProgressChanged(view: WebView?, newProgress: Int) {
-            super.onProgressChanged(view, newProgress)
-        }
-
-        // Support for popup windows
-        override fun onCreateWindow(
-            view: WebView,
-            isDialog: Boolean,
-            isUserGesture: Boolean,
-            resultMsg: Message
-        ): Boolean {
-            return super.onCreateWindow(view, isDialog, isUserGesture, resultMsg)
-        }
-
-        // Support for JavaScript alerts
-        override fun onJsAlert(
-            view: WebView,
-            url: String,
-            message: String,
-            result: JsResult
-        ): Boolean {
-            return super.onJsAlert(view, url, message, result)
-        }
-    }
+    webChromeClient = object : WebChromeClient() {}
 }
 
-// Usage example:
 @Composable
 fun ExampleUsage() {
     val sampleWebsites = listOf(
-        WebsiteInfo(
-            title = "Google",
-            url = "https://www.google.com",
-            description = "Search the world's information, including webpages, images, videos and more."
-        ),
-        WebsiteInfo(
-            title = "GitHub",
-            url = "https://www.github.com",
-            description = "GitHub is where over 100 million developers shape the future of software, together."
-        ),
-        WebsiteInfo(
-            title = "Stack Overflow",
-            url = "https://stackoverflow.com",
-            description = "Stack Overflow is the largest, most trusted online community for developers to learn and share knowledge."
-        ),
-        WebsiteInfo(
-            title = "Medium",
-            url = "https://medium.com",
-            description = "Medium is an open platform where readers find dynamic thinking, and where expert voices are heard."
-        ),
-        WebsiteInfo(
-            title = "Reddit",
-            url = "https://www.reddit.com",
-            description = "Reddit is a network of communities where people can dive into their interests, hobbies and passions."
-        )
+        WebsiteInfo("Google", "https://www.google.com", "Search the world's information."),
+        WebsiteInfo("GitHub", "https://www.github.com", "Code hosting platform."),
+        WebsiteInfo("Stack Overflow", "https://stackoverflow.com", "Q&A for developers."),
+        WebsiteInfo("Medium", "https://medium.com", "Read and write stories."),
+        WebsiteInfo("Reddit", "https://www.reddit.com", "Online communities.")
     )
 
     WebsiteCardsView(
         websites = sampleWebsites,
-        onPageLoaded = { url ->
-            println("Page loaded: $url")
-        },
-        onError = { error ->
-            println("Error: $error")
-        }
+        onPageLoaded = { println("Page loaded: $it") },
+        onError = { println("Error: $it") }
     )
 }
