@@ -9,6 +9,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import android.os.Bundle
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Send
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebSettings
@@ -17,8 +23,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -32,13 +40,87 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
-
+import retrofit2.*
+import retrofit2.http.Body
+import retrofit2.http.Headers
+import retrofit2.http.POST
+import androidx.compose.foundation.shape.CircleShape
+import retrofit2.converter.gson.GsonConverterFactory
+import okhttp3.OkHttpClient
+import com.google.gson.Gson
 data class ScrapedContent(
     val title: String,
     val description: String,
     val additionalInfo: String,
     val sourceUrl: String
 )
+data class AwanMessage(val role: String, val content: String)
+
+@Composable
+fun ChatTriggerPopup(displayedContent: List<ScrapedContent>) {
+    var showChatPopup by remember { mutableStateOf(false) }
+
+    // Extract titles from displayedContent
+    val extractedTitles = remember(displayedContent) {
+        displayedContent.map { it.title }.distinct()
+    }
+
+    // ✅ FAB Launcher Popup - Only sized to the FAB, no touch blocking
+    Popup(
+        alignment = Alignment.BottomStart,
+        properties = PopupProperties(focusable = false)
+    ) {
+        FloatingActionButton(
+            onClick = { showChatPopup = true },
+            modifier = Modifier
+                .padding(16.dp), // space from bottom and start
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        ) {
+            Icon(
+                imageVector = Icons.Default.Chat,
+                contentDescription = "Open Chat",
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+
+    // 💬 ChatPopup in a separate fullscreen popup
+    if (showChatPopup) {
+        Popup(
+            alignment = Alignment.Center,
+            onDismissRequest = { showChatPopup = false },
+            properties = PopupProperties(
+                focusable = true,
+                dismissOnClickOutside = true,
+                dismissOnBackPress = true
+            )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f)) // Optional overlay
+            ) {
+                ChatPopup(
+                    isVisible = true,
+                    onDismiss = { showChatPopup = false },
+                    extractedTitles = extractedTitles
+                )
+            }
+        }
+    }
+}
+
+
+data class AwanChoice(val message: AwanMessage)
+
+
+interface AwanApi {
+    @Headers("Content-Type: application/json")
+    @POST("v1/chat/completions")
+    fun chat(@Body request: AwanRequest): Call<AwanResponse>
+}
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,6 +160,7 @@ fun ScraperScreen() {
                 }
             }
         }
+
 
         // Animation for loading progress
         val infiniteTransition = rememberInfiniteTransition(label = "loading")
@@ -704,6 +787,7 @@ fun ScraperScreen() {
                                                         vertical = 4.dp
                                                     )
                                                 )
+
                                             }
                                         }
                                     }
@@ -715,4 +799,248 @@ fun ScraperScreen() {
             }
 
         }
+    ChatTriggerPopup(displayedContent)
     }
+@Composable
+fun ChatPopup(
+    isVisible: Boolean,
+    onDismiss: () -> Unit,
+    extractedTitles: List<String>,
+    modifier: Modifier = Modifier
+) {
+    var userInput by remember { mutableStateOf("") }
+    var chatMessages by remember { mutableStateOf<List<AwanMessage>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
+    val api = remember { getAwanApi() }
+
+    if (isVisible) {
+        Popup(
+            alignment = Alignment.Center,
+            properties = PopupProperties(
+                focusable = true,
+                dismissOnBackPress = true,
+                dismissOnClickOutside = false
+            ),
+            onDismissRequest = onDismiss
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth(0.95f)
+                    .fillMaxHeight(0.8f)
+                    .clip(RoundedCornerShape(16.dp)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Header
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.primary)
+                            .padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "💬 Chat with AI about Hackathons",
+                            style = MaterialTheme.typography.headlineSmall,
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.background(
+                                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.1f),
+                                CircleShape
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+
+                    // Chat Messages
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        reverseLayout = true
+                    ) {
+                        // Loading indicator
+                        if (isLoading) {
+                            item {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(20.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "AI is thinking...",
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Chat messages
+                        items(chatMessages.reversed()) { message ->
+                            val isUser = message.role == "user"
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(
+                                        start = if (isUser) 32.dp else 0.dp,
+                                        end = if (isUser) 0.dp else 32.dp
+                                    ),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (isUser) {
+                                        MaterialTheme.colorScheme.primary
+                                    } else {
+                                        MaterialTheme.colorScheme.secondaryContainer
+                                    }
+                                ),
+                                shape = RoundedCornerShape(
+                                    topStart = 16.dp,
+                                    topEnd = 16.dp,
+                                    bottomStart = if (isUser) 16.dp else 4.dp,
+                                    bottomEnd = if (isUser) 4.dp else 16.dp
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Text(
+                                        text = if (isUser) "You" else "🤖 AI Assistant",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isUser) {
+                                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                                        } else {
+                                            MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                                        },
+                                        modifier = Modifier.padding(bottom = 4.dp)
+                                    )
+                                    Text(
+                                        text = message.content,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = if (isUser) {
+                                            MaterialTheme.colorScheme.onPrimary
+                                        } else {
+                                            MaterialTheme.colorScheme.onSecondaryContainer
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Input Area
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(0.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            // Info text
+                            Text(
+                                text = "📋 ${extractedTitles.size} hackathons will be included in context",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Bottom
+                            ) {
+                                OutlinedTextField(
+                                    value = userInput,
+                                    onValueChange = { userInput = it },
+                                    modifier = Modifier.weight(1f),
+                                    placeholder = { Text("Ask about hackathons...") },
+                                    enabled = !isLoading,
+                                    maxLines = 3
+                                )
+
+                                Spacer(modifier = Modifier.width(8.dp))
+
+                                FloatingActionButton(
+                                    onClick = {
+                                        if (userInput.isNotBlank() && !isLoading) {
+                                            val titlesContext = if (extractedTitles.isNotEmpty()) {
+                                                "Here are the current hackathons I found:\n\n" +
+                                                        extractedTitles.joinToString("\n") { "• $it" } +
+                                                        "\n\nUser Question: $userInput"
+                                            } else {
+                                                userInput
+                                            }
+
+                                            val userMessage = AwanMessage("user", userInput)
+                                            val contextMessage = AwanMessage("user", titlesContext)
+                                            chatMessages = chatMessages + userMessage
+
+                                            val currentInput = userInput
+                                            userInput = ""
+                                            isLoading = true
+
+                                            // Send message with context
+                                            val request = AwanRequest(messages = listOf(contextMessage))
+                                            api.chat(request).enqueue(object : Callback<AwanResponse> {
+                                                override fun onResponse(call: Call<AwanResponse>, response: Response<AwanResponse>) {
+                                                    val reply = response.body()?.choices?.firstOrNull()?.message
+                                                        ?: AwanMessage("assistant", "⚠️ No reply received.")
+                                                    chatMessages = chatMessages + reply
+                                                    isLoading = false
+                                                }
+
+                                                override fun onFailure(call: Call<AwanResponse>, t: Throwable) {
+                                                    chatMessages = chatMessages + AwanMessage("assistant", "❌ Error: ${t.message}")
+                                                    isLoading = false
+                                                }
+                                            })
+                                        }
+                                    },
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(48.dp)
+                                ) {
+                                    if (isLoading) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(24.dp),
+                                            color = MaterialTheme.colorScheme.onPrimary,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Send,
+                                            contentDescription = "Send"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

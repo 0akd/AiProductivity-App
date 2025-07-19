@@ -19,7 +19,7 @@ import retrofit2.http.POST
 
 // --------------------- Data Models ---------------------
 
-data class AwanMessage(val role: String, val content: String)
+
 
 data class AwanRequest(
     val model: String = "Meta-Llama-3.1-70B-Instruct",
@@ -32,16 +32,12 @@ data class AwanRequest(
     val stream: Boolean = false
 )
 
-data class AwanChoice(val message: AwanMessage)
+
 data class AwanResponse(val choices: List<AwanChoice>)
 
 // --------------------- Retrofit API ---------------------
 
-interface AwanApi {
-    @Headers("Content-Type: application/json")
-    @POST("v1/chat/completions")
-    fun chat(@Body request: AwanRequest): Call<AwanResponse>
-}
+
 
 fun getAwanApi(): AwanApi {
     val apiKey = "0fb30cc8-f5d7-407b-ab38-279a8be29658"
