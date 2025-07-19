@@ -2,7 +2,26 @@
 
 package com.example.myapplication
 
+import com.razorpay.Checkout
+import com.razorpay.PaymentResultListener
 
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.DarkMode
+
+import android.app.Activity
+import android.widget.Toast
+import okhttp3.*
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Response
+import java.io.IOException
+import org.json.JSONObject
 
 import android.content.Intent
 import android.net.Uri
@@ -48,7 +67,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.background
 import androidx.compose.runtime.*
+import androidx.core.view.WindowCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.FirebaseApp
 data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
@@ -57,15 +78,41 @@ val LocalThemeToggle = compositionLocalOf {
     ThemeToggle(false) {}
 }
 
-class MainActivity : ComponentActivity() {
+class MainActivity : ComponentActivity(), PaymentResultListener {
+    var isPremiumPurchase = false
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        Checkout.preload(applicationContext)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContent {
             val context = LocalContext.current
             val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
-            var isDarkTheme by remember {
-                mutableStateOf(prefs.getBoolean("is_dark", false))
+           var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("is_dark", true)) }
+
+
+            var isPremium by remember { mutableStateOf(false) }
+            val user = remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+
+            // 🔄 Keep FirebaseAuth in sync
+            LaunchedEffect(Unit) {
+                FirebaseAuth.getInstance().addAuthStateListener { auth ->
+                    user.value = auth.currentUser
+                }
+            }
+            LaunchedEffect(user.value) {
+                user.value?.email?.let { email ->
+                    Premium.checkIfPremium(email) { isPremium = it }
+                }
+            }
+
+            // ✅ Check Firestore premium if user is logged in
+            LaunchedEffect(user.value) {
+                user.value?.email?.let { email ->
+                    Premium.checkIfPremium(email) { result ->
+                        isPremium = result
+                    }
+                }
             }
 
             CompositionLocalProvider(LocalThemeToggle provides ThemeToggle(isDarkTheme) {
@@ -73,26 +120,41 @@ class MainActivity : ComponentActivity() {
                 prefs.edit().putBoolean("is_dark", it).apply()
             }) {
                 MyApplicationTheme(darkTheme = isDarkTheme) {
-                    // Your app content
-                    val user = remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+//                    if (user.value == null) {
+//                        AuthScreen()
+//                    } else
 
-                    LaunchedEffect(Unit) {
-                        FirebaseAuth.getInstance().addAuthStateListener { auth ->
-                            user.value = auth.currentUser
-                        }
-                    }
+                        MainScreen(isPremium = isPremium)
 
-                    if (user.value == null) {
-                        AuthScreen()
-                    } else {
-                        MainScreen()
-                    }
                 }
             }
         }
+
+    }
+
+    override fun onPaymentSuccess(razorpayPaymentID: String) {
+        Toast.makeText(this, "✅ Payment Successful", Toast.LENGTH_SHORT).show()
+
+        val email = FirebaseAuth.getInstance().currentUser?.email ?: return
+
+        if (isPremiumPurchase) {
+            Premium.storePremiumUser(email) { success ->
+                if (success) {
+                    Toast.makeText(this, "🎉 Premium Activated!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Payment OK, but failed to activate premium", Toast.LENGTH_SHORT).show()
+                }
+            }
+        } else {
+            Toast.makeText(this, "🙏 Thank you for your donation!", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    override fun onPaymentError(code: Int, response: String?) {
+        Toast.makeText(this, "❌ Payment Failed: $response", Toast.LENGTH_LONG).show()
     }
 }
-// Hard-coded website URLs array
 val websiteUrls = arrayOf(
     "https://google.com",
     "https://github.com",
@@ -188,44 +250,20 @@ fun WebsitesList() {
         }
     }
 }
-@Composable
-fun ThemeToggleButton() {
-    val themeToggle = LocalThemeToggle.current
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        FloatingActionButton(
-            onClick = {
-                themeToggle.toggle(!themeToggle.isDark)
-            },
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .zIndex(10f)
-                .size(60.dp),
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary,
-            shape = CircleShape
-        ) {
-            Icon(
-                imageVector = if (themeToggle.isDark) Icons.Default.Close else Icons.Default.Menu,
-                contentDescription = "Toggle Theme"
-            )
-        }
-    }
-}
 
 @Composable
-fun MainScreen() {
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+fun MainScreen(isPremium: Boolean = false) {
     val context = LocalContext.current
-    var currentScreen by remember {
-        mutableStateOf(ScreenPrefs.getSavedScreen(context))
+    val drawerState = rememberDrawerState(DrawerValue.Closed) // ✅ Declare this
+    val scope = rememberCoroutineScope()
+
+
+
+    var currentScreen by remember { mutableStateOf("Scrape") } // default
+    LaunchedEffect(Unit) {
+        currentScreen = ScreenPrefs.getSavedScreen(context)
     }
-    var focusedTask by remember { mutableStateOf<Task?>(null) }
+
 
     fun changeScreen(screen: String) {
         currentScreen = screen
@@ -247,6 +285,7 @@ fun MainScreen() {
         // ... more websites
     )
 
+
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
@@ -263,6 +302,7 @@ fun MainScreen() {
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.End
                     ) {
+
                         IconButton(
                             onClick = { scope.launch { drawerState.close() } }
                         ) {
@@ -281,7 +321,12 @@ fun MainScreen() {
                     )
                     Divider()
 
-                    val screens = listOf("Home", "Todo","Scrape","Full")//"Portfolio","About Dev","Full","Journal","Ai",
+
+                    val screens = if (isPremium) {
+                        listOf("Home", "Todo", "Scrape", "Premium Features", "Donate")
+                    } else {
+                        listOf("Home", "Todo",  "Scrape","Donate","Login/Signup" )//"Buy Premium"
+                    }
 
                     screens.forEach { screen ->
                         DrawerButton(screen) {
@@ -292,18 +337,51 @@ fun MainScreen() {
             }
         }
     ) {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             // Floating Menu Icon
-            IconButton(
-                onClick = { scope.launch { drawerState.open() } },
+            val screenTitles = mapOf(
+                "Home" to "Home",
+                "Todo" to "Tasks",
+                "Donate" to "Support Us",
+                "Scrape" to "Hackathon Scraper",
+                "Buy Premium" to "Upgrade",
+                "Premium Features" to "Premium Tools",
+                "Login/Signup" to "Login/Signup"
+            )
+            TopAppBar(
+                title = { Text(screenTitles[currentScreen] ?: "My App") },
+                actions = {      val themeToggle = LocalThemeToggle.current
+
+                    IconButton(
+                        onClick = {
+                            themeToggle.toggle(!themeToggle.isDark)
+                        }
+                    ) {
+                        Icon(
+                            imageVector = if (themeToggle.isDark) Icons.Filled.LightMode else Icons.Filled.DarkMode,
+                            contentDescription = if (themeToggle.isDark) "Switch to Light Mode" else "Switch to Dark Mode",
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                    IconButton(
+                        onClick = { scope.launch { drawerState.open() } },
+                        modifier = Modifier
+
+
+                            .zIndex(1f) // Ensure it's above other content
+
+                    ) {
+                        Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MaterialTheme.colorScheme.onBackground)
+                    }
+                },
                 modifier = Modifier
-                    .size(90.dp)
-                    .align(Alignment.TopEnd)
-                    .zIndex(1f) // Ensure it's above other content
-                    .shadow(6.dp, shape = CircleShape)
-            ) {
-                Icon(Icons.Default.Menu, contentDescription = "Menu", tint = Color.White)
-            }
+                    .height(70.dp)
+                    .zIndex(999f),
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background,
+                    titleContentColor = MaterialTheme.colorScheme.onBackground
+                )
+            )
 
             // Screen content below
             Box(
@@ -323,26 +401,35 @@ fun MainScreen() {
                 when (currentScreen) {
                     "Home" -> HomeScreen()
                     "Todo" -> Renaem()
-//                    "Portfolio" -> WebsiteCardsView(
-//                        websites = websites,
-//                        onPageLoaded = { url -> /* handle page load */ },
-//                        onError = { error -> /* handle error */ }
-//                    )
-//                    "About Dev" -> AboutDevScreenroller(
-//                        onReturn = { currentScreen = "Home" }
-//                    )
-////                    "Full" -> WebsitesList()
-//                    "Full"->HackathonListScreen()
-//                    "Journal"->JournalScreen()
-//                    "Ai"->ChatScreen()
-                    "Scrape"->ScraperScreen()
-                    "Full"->Hack()
+                    "Scrape" -> ScraperScreen()
+                    "Login/Signup"->Box(    modifier = Modifier
+                        .fillMaxSize()
+
+                        .background(MaterialTheme.colorScheme.background),){AuthScreen()}
+                    "Full" -> Hack()
+                    "Buy Premium" -> PremiumScreen {
+                        // You can do any of these:
+                        // - Show a toast
+                        // - Update a state
+                        // - Navigate to another screen
+                        // - Log analytics event
+
+                        Toast.makeText(context, "Welcome to Premium!", Toast.LENGTH_SHORT).show()
+                        currentScreen = "Home" // Optional: auto-redirect to Home
+                    }
+                    "Donate" -> Box(    modifier = Modifier
+                        .fillMaxSize()
+
+                        .background(MaterialTheme.colorScheme.background),){DonationScreen()}
+                    "Premium Features"->Renaem()
+                 // 👈 Add this line
+                }
                 }
             }
-            ThemeToggleButton()
+
         }
     }
-}
+
 
 object ScreenPrefs {
     private const val PREF_NAME = "screen_prefs"
@@ -355,7 +442,7 @@ object ScreenPrefs {
 
     fun getSavedScreen(context: Context): String {
         val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_CURRENT_SCREEN, "Home") ?: "Home"
+        return prefs.getString(KEY_CURRENT_SCREEN, "Scrape") ?: "Scrape"
     }
 }
 
@@ -416,3 +503,151 @@ fun AboutDevScreenroller(onReturn: () -> Unit) {
     }
 }
 
+@Composable
+fun DonationScreen() {
+    val context = LocalContext.current
+    var amount by remember { mutableStateOf("1") }
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+    var contact by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier.padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text("Donate To Arjun", style = MaterialTheme.typography.headlineMedium)
+
+        OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount (₹)") })
+        OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+        OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email") })
+        OutlinedTextField(value = contact, onValueChange = { contact = it }, label = { Text("Contact") })
+
+        Button(
+            onClick = {
+                val amt = amount.toIntOrNull()
+                if (amt != null && amt > 0 && email.isNotBlank()) {
+                    // Mark this as a donation
+                    (context as? MainActivity)?.isPremiumPurchase = false
+                    startPayment(
+                        context = context,
+                        amount = amt * 100, // Razorpay expects amount in paise
+                        name = name,
+                        email = email,
+                        contact = contact
+                    )
+                } else {
+                    Toast.makeText(context, "Please enter valid details", Toast.LENGTH_SHORT).show()
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+                    colors= ButtonDefaults.buttonColors(MaterialTheme.colorScheme.onSecondaryContainer)
+        ) {
+            Text("Donate ₹$amount")
+
+        }
+
+    }
+}
+
+fun startPayment(
+    context: Context,
+    amount: Int,
+    name: String,
+    email: String,
+    contact: String
+) {
+    val activity = context as? Activity ?: return
+    val checkout = Checkout()
+    checkout.setKeyID("rzp_live_QulPR0m620bxEF") // Same as your frontend key
+
+    val client = OkHttpClient()
+    val json = """
+        {
+            "amount": $amount
+        }
+    """.trimIndent()
+
+    val requestBody = json.toRequestBody("application/json".toMediaType())
+    val request = Request.Builder()
+        .url("https://www.arjundubey.com/api/create-razorpay-order") // ✅ your working Next.js API
+        .post(requestBody)
+        .build()
+
+    client.newCall(request).enqueue(object : Callback {
+        override fun onFailure(call: Call, e: IOException) {
+            activity.runOnUiThread {
+                Toast.makeText(context, "Failed: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
+
+        override fun onResponse(call: Call, response: Response) {
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful || responseBody == null) {
+                activity.runOnUiThread {
+                    Toast.makeText(context, "Error: $responseBody", Toast.LENGTH_LONG).show()
+                }
+                return
+            }
+
+            val order = JSONObject(responseBody)
+            val options = JSONObject().apply {
+                put("name", "$name to Arjun Dubey")
+                put("description", "Donation")
+                put("currency", "INR")
+                put("amount", order.getInt("amount"))
+                put("order_id", order.getString("id"))
+                put("prefill", JSONObject().apply {
+                    put("email", email)
+                    put("contact", contact)
+                    put("name", name)
+                })
+            }
+
+            activity.runOnUiThread {
+                checkout.open(activity, options)
+            }
+        }
+    })
+}
+@Composable
+fun PremiumScreen(onPremiumActivated: () -> Unit = {}) {
+    var name by remember { mutableStateOf("") }
+    var email by remember { mutableStateOf("") }
+
+    var contact by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    LaunchedEffect(Unit) {
+        val user = FirebaseAuth.getInstance().currentUser
+        user?.email?.let {
+            email = it
+        }
+    }
+
+    Button(
+        onClick = {
+            val amount = 1
+            if (email.isNotBlank()) {
+                (context as? MainActivity)?.isPremiumPurchase = true
+                startPayment(
+                    context = context,
+                    amount = amount * 100,
+                    name = name,
+                    email = email,
+                    contact = contact
+                )
+                Premium.storePremiumUser(email) { success ->
+                    if (success) {
+                        Toast.makeText(context, "Premium Activated!", Toast.LENGTH_SHORT).show()
+                        onPremiumActivated()
+                    }
+                }
+            } else {
+                Toast.makeText(context, "Email required", Toast.LENGTH_SHORT).show()
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Buy Premium ₹199")
+    }
+
+}

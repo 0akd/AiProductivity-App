@@ -1,5 +1,6 @@
 pluginManagement {
     repositories {
+
         google {
             content {
                 includeGroupByRegex("com\\.android.*")
@@ -8,6 +9,10 @@ pluginManagement {
             }
         }
         mavenCentral()
+        maven {
+            setUrl("https://jitpack.io")
+        }
+
         gradlePluginPortal()
     }
 }

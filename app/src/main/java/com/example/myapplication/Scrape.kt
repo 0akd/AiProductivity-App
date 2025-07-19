@@ -1,53 +1,50 @@
 package com.example.myapplication
-import androidx.compose.foundation.clickable
-import androidx.compose.animation.core.*
+import android.webkit.CookieManager
+import android.webkit.WebSettings
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupProperties
-import android.os.Bundle
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.webkit.WebSettings
-import android.webkit.CookieManager
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.QuestionMark
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
+import com.google.gson.Gson
 import kotlinx.coroutines.delay
+import okhttp3.ResponseBody
 import retrofit2.*
 import retrofit2.http.Body
-import retrofit2.http.Headers
 import retrofit2.http.POST
-import androidx.compose.foundation.shape.CircleShape
-import retrofit2.converter.gson.GsonConverterFactory
-import okhttp3.OkHttpClient
-import com.google.gson.Gson
+import retrofit2.http.Streaming
+
+
 data class ScrapedContent(
     val title: String,
     val description: String,
@@ -67,18 +64,18 @@ fun ChatTriggerPopup(displayedContent: List<ScrapedContent>) {
 
     // ✅ FAB Launcher Popup - Only sized to the FAB, no touch blocking
     Popup(
-        alignment = Alignment.BottomStart,
+        alignment = Alignment.BottomEnd,
         properties = PopupProperties(focusable = false)
     ) {
         FloatingActionButton(
             onClick = { showChatPopup = true },
             modifier = Modifier
                 .padding(16.dp), // space from bottom and start
-            containerColor = MaterialTheme.colorScheme.primary,
-            contentColor = MaterialTheme.colorScheme.onPrimary
+            containerColor = MaterialTheme.colorScheme.tertiary,
+            contentColor = MaterialTheme.colorScheme.onBackground
         ) {
             Icon(
-                imageVector = Icons.Default.Chat,
+                imageVector = Icons.Default.QuestionMark,
                 contentDescription = "Open Chat",
                 modifier = Modifier.size(24.dp)
             )
@@ -116,11 +113,13 @@ data class AwanChoice(val message: AwanMessage)
 
 
 interface AwanApi {
-    @Headers("Content-Type: application/json")
     @POST("v1/chat/completions")
     fun chat(@Body request: AwanRequest): Call<AwanResponse>
-}
 
+    @POST("v1/chat/completions")
+    @Streaming
+    fun chatStream(@Body request: AwanRequest): Call<ResponseBody>
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -210,31 +209,17 @@ fun ScraperScreen() {
                 modifier = Modifier
                     .fillMaxWidth()
 
-                .zIndex(3f),
+                    .zIndex(3f),
 
-                elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
                 shape = RoundedCornerShape(0.dp)
             ) {
                 Column(
-                    modifier = Modifier.padding(20.dp),
+
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Text(
-                        text = "🚀 Hackathon Hunter",
-                        style = MaterialTheme.typography.headlineLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Discovering amazing hackathons across the web",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        textAlign = TextAlign.Center
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
+
 
                     // Loading Status or Search Bar
                     if (isCompleted) {
@@ -244,18 +229,12 @@ fun ScraperScreen() {
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                             elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
                         ) {
-                            Column(modifier = Modifier.padding(16.dp)) {
-                                Text(
-                                    text = "🔍 Search Hackathons",
-                                    style = MaterialTheme.typography.headlineSmall,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
+                            Column(modifier = Modifier.padding(5.dp)) {
+
                                 OutlinedTextField(
                                     value = searchQuery,
                                     onValueChange = { searchQuery = it },
-                                    placeholder = { Text("Search by title, description, or info...") },
+                                    placeholder = { Text("🔍 Search Hackathons , Organisers... ") },
                                     modifier = Modifier.fillMaxWidth(),
                                     singleLine = true
                                 )
@@ -278,38 +257,56 @@ fun ScraperScreen() {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                            shape = RectangleShape, // 👈 This is crucial
+                            elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+
                         ) {
                             Column(
 
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
 
-
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(1.dp)
+                                        .clip(RectangleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxHeight()
+                                            .fillMaxWidth(loadingProgress)
+                                            .clip(RectangleShape)
+                                            .background(MaterialTheme.colorScheme.primary)
+                                    )
+                                }
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
+                                    val currentSite = try {
+                                        val uri = android.net.Uri.parse(urlList[currentIndex])
+                                        uri.host?.replace("www.", "") ?: "Unknown"
+                                    } catch (e: Exception) {
+                                        "Unknown"
+                                    }
                                     Text(
-                                        text = "Scanning ${currentIndex + 1}/${urlList.size}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.Medium
+                                        text = "Currently scraping: $currentSite",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                        textAlign = TextAlign.Center
                                     )
                                     Card(
-                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondary),
-                                        modifier = Modifier.padding(horizontal = 8.dp)
+
                                     ) {
                                         Text(
                                             text = "${allContent.size}",
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            color = MaterialTheme.colorScheme.onSecondary,
-                                            fontWeight = FontWeight.Bold,
-                                            modifier = Modifier.padding(
-                                                horizontal = 12.dp,
-                                                vertical = 4.dp
-                                            )
+
+                                            color = MaterialTheme.colorScheme.onBackground,
+
+
                                         )
                                     }
                                 }
@@ -751,7 +748,7 @@ fun ScraperScreen() {
                                                 modifier = Modifier.padding(bottom = 8.dp)
                                             ) {
                                                 Text(
-                                                    text = "🌐 $siteName",
+                                                    text = " $siteName",
                                                     style = MaterialTheme.typography.bodySmall,
                                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                                     modifier = Modifier.padding(
@@ -778,9 +775,9 @@ fun ScraperScreen() {
                                                 )
                                             ) {
                                                 Text(
-                                                    text = "ℹ️ ${content.additionalInfo}",
+                                                    text = "${content.additionalInfo}",
                                                     style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
                                                     fontWeight = FontWeight.Medium,
                                                     modifier = Modifier.padding(
                                                         horizontal = 8.dp,
@@ -811,8 +808,52 @@ fun ChatPopup(
     var userInput by remember { mutableStateOf("") }
     var chatMessages by remember { mutableStateOf<List<AwanMessage>>(emptyList()) }
     var isLoading by remember { mutableStateOf(false) }
+    var streamingMessage by remember { mutableStateOf("") }
+    var isStreaming by remember { mutableStateOf(false) }
+    var hasShownWelcome by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val api = remember { getAwanApi() }
+    fun streamWelcomeMessage(
+        onStreamStart: () -> Unit,
+        onStreamChunk: (String) -> Unit,
+        onStreamComplete: (String) -> Unit
+    ) {
+        val welcomeText = "Hello there , are you having difficult time to find good hackathons, no problem just tell me your tech stack, skills or anything or just type - bring me hackathons powered by faangs "
+
+        onStreamStart()
+
+        Thread {
+            try {
+                welcomeText.forEach { char ->
+                    Thread.sleep(50) // Slightly slower for welcome message
+                    onStreamChunk(char.toString())
+                }
+                onStreamComplete(welcomeText)
+            } catch (e: Exception) {
+                onStreamComplete(welcomeText)
+            }
+        }.start()
+    }
+    // Show welcome message when popup first opens
+    LaunchedEffect(isVisible) {
+        if (isVisible && !hasShownWelcome && chatMessages.isEmpty()) {
+            hasShownWelcome = true
+            streamWelcomeMessage(
+                onStreamStart = {
+                    isStreaming = true
+                    streamingMessage = ""
+                },
+                onStreamChunk = { chunk ->
+                    streamingMessage += chunk
+                },
+                onStreamComplete = { finalMessage ->
+                    isStreaming = false
+                    chatMessages = listOf(AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", finalMessage))
+                    streamingMessage = ""
+                }
+            )
+        }
+    }
 
     if (isVisible) {
         Popup(
@@ -835,37 +876,39 @@ fun ChatPopup(
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    // Header
+                    // Header (same as before)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primary)
+                            .background(MaterialTheme.colorScheme.background)
                             .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    horizontalArrangement = Arrangement.End,
+    verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = "💬 Chat with AI about Hackathons",
-                            style = MaterialTheme.typography.headlineSmall,
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
+
                         IconButton(
                             onClick = onDismiss,
-                            modifier = Modifier.background(
-                                MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.1f),
-                                CircleShape
-                            )
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.1f),
+                                    CircleShape
+
+                                )
+                                .size(40.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
-                                tint = MaterialTheme.colorScheme.onPrimary
+                                tint = MaterialTheme.colorScheme.onBackground,
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .zIndex(999f)
+
                             )
                         }
                     }
 
-                    // Chat Messages
+                    // Chat Messages with streaming support
                     LazyColumn(
                         modifier = Modifier
                             .weight(1f)
@@ -874,170 +917,319 @@ fun ChatPopup(
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         reverseLayout = true
                     ) {
-                        // Loading indicator
-                        if (isLoading) {
+                        // Streaming message (if active)
+                        if (isStreaming && streamingMessage.isNotEmpty()) {
                             item {
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(20.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Text(
-                                            text = "AI is thinking...",
-                                            style = MaterialTheme.typography.bodyMedium
-                                        )
-                                    }
-                                }
+                                ChatMessageCard(
+                                    message = AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", streamingMessage),
+                                    isUser = false,
+                                    isStreaming = true
+                                )
                             }
                         }
 
-                        // Chat messages
+                        // Loading indicator
+                        if (isLoading && !isStreaming) {
+                            item {
+                                LoadingIndicator()
+                            }
+                        }
+
+                        // Regular chat messages
                         items(chatMessages.reversed()) { message ->
-                            val isUser = message.role == "user"
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(
-                                        start = if (isUser) 32.dp else 0.dp,
-                                        end = if (isUser) 0.dp else 32.dp
-                                    ),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isUser) {
-                                        MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.secondaryContainer
+                            ChatMessageCard(
+                                message = message,
+                                isUser = message.role == "user",
+                                isStreaming = false
+                            )
+                        }
+                    }
+
+                    // Input Area
+                    InputArea(
+                        userInput = userInput,
+                        onInputChange = { userInput = it },
+                        isLoading = isLoading || isStreaming,
+                        extractedTitles = extractedTitles,
+                        onSendMessage = {
+                            if (userInput.isNotBlank() && !isLoading && !isStreaming) {
+                                val titlesContext = if (extractedTitles.isNotEmpty()) {
+                                    "Here are the current hackathons I found:\n\n" +
+                                            extractedTitles.joinToString("\n") { "• $it" } +
+                                            "\n\nUser Question: $userInput"
+                                } else {
+                                    userInput
+                                }
+
+                                val userMessage = AwanMessage("user", userInput)
+                                val contextMessage = AwanMessage("user", titlesContext)
+                                chatMessages = chatMessages + userMessage
+
+                                userInput = ""
+                                isLoading = true
+                                streamingMessage = ""
+
+                                // Start streaming
+                                streamChatResponse(
+                                    api = api,
+                                    contextMessage = contextMessage,
+                                    onStreamStart = {
+                                        isLoading = false
+                                        isStreaming = true
+                                        streamingMessage = ""
+                                    },
+                                    onStreamChunk = { chunk ->
+                                        streamingMessage += chunk
+                                    },
+                                    onStreamComplete = { finalMessage ->
+                                        isStreaming = false
+                                        chatMessages = chatMessages + AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", finalMessage)
+                                        streamingMessage = ""
+                                    },
+                                    onError = { error ->
+                                        isLoading = false
+                                        isStreaming = false
+                                        chatMessages = chatMessages + AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", "❌ Error: $error")
+                                        streamingMessage = ""
                                     }
-                                ),
-                                shape = RoundedCornerShape(
-                                    topStart = 16.dp,
-                                    topEnd = 16.dp,
-                                    bottomStart = if (isUser) 16.dp else 4.dp,
-                                    bottomEnd = if (isUser) 4.dp else 16.dp
                                 )
-                            ) {
-                                Column(modifier = Modifier.padding(12.dp)) {
-                                    Text(
-                                        text = if (isUser) "You" else "🤖 AI Assistant",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isUser) {
-                                            MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
-                                        } else {
-                                            MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                                        },
-                                        modifier = Modifier.padding(bottom = 4.dp)
-                                    )
-                                    Text(
-                                        text = message.content,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = if (isUser) {
-                                            MaterialTheme.colorScheme.onPrimary
-                                        } else {
-                                            MaterialTheme.colorScheme.onSecondaryContainer
+                            }
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+fun streamChatResponse(
+    api: AwanApi,
+    contextMessage: AwanMessage,
+    onStreamStart: () -> Unit,
+    onStreamChunk: (String) -> Unit,
+    onStreamComplete: (String) -> Unit,
+    onError: (String) -> Unit
+) {
+    val request = AwanRequest(messages = listOf(contextMessage), stream = true)
+    val gson = Gson()
+
+    api.chatStream(request).enqueue(object : Callback<ResponseBody> {
+        override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+            if (!response.isSuccessful) {
+                onError("HTTP ${response.code()}")
+                return
+            }
+
+            val responseBody = response.body()
+            if (responseBody == null) {
+                onError("Empty response")
+                return
+            }
+
+            onStreamStart()
+
+            Thread {
+                try {
+                    val reader = responseBody.byteStream().bufferedReader()
+                    val completeMessage = StringBuilder()
+
+                    reader.forEachLine { line ->
+                        if (line.startsWith("data: ")) {
+                            val jsonData = line.substring(6).trim()
+                            if (jsonData != "[DONE]" && jsonData.isNotEmpty()) {
+                                try {
+                                    val chunk = gson.fromJson(jsonData, StreamingChunk::class.java)
+                                    val content = chunk.choices?.firstOrNull()?.delta?.content
+
+                                    if (content != null) {
+                                        completeMessage.append(content)
+
+                                        // Stream character by character with delay
+                                        content.forEach { char ->
+                                            Thread.sleep(30) // Adjust delay as needed (30ms per character)
+                                            onStreamChunk(char.toString())
                                         }
-                                    )
+                                    }
+                                } catch (e: Exception) {
+                                    // Skip malformed chunks
                                 }
                             }
                         }
                     }
 
-                    // Input Area
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(0.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    onStreamComplete(completeMessage.toString())
+                    reader.close()
+                } catch (e: Exception) {
+                    onError(e.message ?: "Streaming error")
+                }
+            }.start()
+        }
+
+        override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+            onError(t.message ?: "Network error")
+        }
+    })
+}
+@Composable
+fun ChatMessageCard(
+    message: AwanMessage,
+    isUser: Boolean,
+    isStreaming: Boolean = false
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = if (isUser) 32.dp else 0.dp,
+                end = if (isUser) 0.dp else 32.dp
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUser) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.secondaryContainer
+            }
+        ),
+        shape = RoundedCornerShape(
+            topStart = 16.dp,
+            topEnd = 16.dp,
+            bottomStart = if (isUser) 16.dp else 4.dp,
+            bottomEnd = if (isUser) 4.dp else 16.dp
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isUser) "You" else "",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = if (isUser) {
+                        MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
+                    } else {
+                        MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
+                    },
+                    modifier = Modifier.padding(bottom = 4.dp)
+                )
+
+                if (isStreaming) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    // Blinking cursor for streaming effect
+                    BlinkingCursor()
+                }
+            }
+
+            Text(
+                text = message.content,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (isUser) {
+                    MaterialTheme.colorScheme.onPrimary
+                } else {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                }
+            )
+        }
+    }
+}
+
+@Composable
+fun BlinkingCursor() {
+    var visible by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(500)
+            visible = !visible
+        }
+    }
+
+    Text(
+        text = if (visible) "▌" else "",
+        color = MaterialTheme.colorScheme.onSecondaryContainer,
+        style = MaterialTheme.typography.bodyMedium
+    )
+}
+
+@Composable
+fun LoadingIndicator() {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(20.dp),
+                strokeWidth = 2.dp
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "AI is thinking...",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+fun InputArea(
+    userInput: String,
+    onInputChange: (String) -> Unit,
+    isLoading: Boolean,
+    extractedTitles: List<String>,
+    onSendMessage: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(0.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "📋 ${extractedTitles.size} hackathons scraped",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                OutlinedTextField(
+                    value = userInput,
+                    onValueChange = onInputChange,
+                    modifier = Modifier.weight(1f),
+                    placeholder = { Text("Ask about hackathons...") },
+                    enabled = !isLoading,
+                    maxLines = 3
+                )
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                FloatingActionButton(
+                    onClick = onSendMessage,
+                    containerColor = MaterialTheme.colorScheme.tertiary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(48.dp)
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = MaterialTheme.colorScheme.onPrimary,
+                            strokeWidth = 2.dp
                         )
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            // Info text
-                            Text(
-                                text = "📋 ${extractedTitles.size} hackathons will be included in context",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.Bottom
-                            ) {
-                                OutlinedTextField(
-                                    value = userInput,
-                                    onValueChange = { userInput = it },
-                                    modifier = Modifier.weight(1f),
-                                    placeholder = { Text("Ask about hackathons...") },
-                                    enabled = !isLoading,
-                                    maxLines = 3
-                                )
-
-                                Spacer(modifier = Modifier.width(8.dp))
-
-                                FloatingActionButton(
-                                    onClick = {
-                                        if (userInput.isNotBlank() && !isLoading) {
-                                            val titlesContext = if (extractedTitles.isNotEmpty()) {
-                                                "Here are the current hackathons I found:\n\n" +
-                                                        extractedTitles.joinToString("\n") { "• $it" } +
-                                                        "\n\nUser Question: $userInput"
-                                            } else {
-                                                userInput
-                                            }
-
-                                            val userMessage = AwanMessage("user", userInput)
-                                            val contextMessage = AwanMessage("user", titlesContext)
-                                            chatMessages = chatMessages + userMessage
-
-                                            val currentInput = userInput
-                                            userInput = ""
-                                            isLoading = true
-
-                                            // Send message with context
-                                            val request = AwanRequest(messages = listOf(contextMessage))
-                                            api.chat(request).enqueue(object : Callback<AwanResponse> {
-                                                override fun onResponse(call: Call<AwanResponse>, response: Response<AwanResponse>) {
-                                                    val reply = response.body()?.choices?.firstOrNull()?.message
-                                                        ?: AwanMessage("assistant", "⚠️ No reply received.")
-                                                    chatMessages = chatMessages + reply
-                                                    isLoading = false
-                                                }
-
-                                                override fun onFailure(call: Call<AwanResponse>, t: Throwable) {
-                                                    chatMessages = chatMessages + AwanMessage("assistant", "❌ Error: ${t.message}")
-                                                    isLoading = false
-                                                }
-                                            })
-                                        }
-                                    },
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(48.dp)
-                                ) {
-                                    if (isLoading) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(24.dp),
-                                            color = MaterialTheme.colorScheme.onPrimary,
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = Icons.Default.Send,
-                                            contentDescription = "Send"
-                                        )
-                                    }
-                                }
-                            }
-                        }
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Send,
+                            contentDescription = "Send"
+                        )
                     }
                 }
             }

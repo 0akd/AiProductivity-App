@@ -7,6 +7,7 @@ import android.content.Context
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -64,7 +65,8 @@ fun AuthScreen() {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(24.dp),
+            .padding(24.dp)
+      ,
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
@@ -132,7 +134,8 @@ fun AuthScreen() {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-            enabled = !loading
+            enabled = !loading,
+            colors= ButtonDefaults.buttonColors(MaterialTheme.colorScheme.onSecondaryContainer)
         ) {
             Text(if (isLoginMode) "Login" else "Register")
         }

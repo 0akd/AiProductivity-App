@@ -29,9 +29,19 @@ data class AwanRequest(
     val top_p: Double = 0.9,
     val top_k: Int = 40,
     val max_tokens: Int = 1024,
-    val stream: Boolean = false
+    val stream: Boolean = true // Enable streaming
+)
+data class StreamingChunk(
+    val choices: List<StreamingChoice>?
 )
 
+data class StreamingChoice(
+    val delta: StreamingDelta?
+)
+
+data class StreamingDelta(
+    val content: String?
+)
 
 data class AwanResponse(val choices: List<AwanChoice>)
 

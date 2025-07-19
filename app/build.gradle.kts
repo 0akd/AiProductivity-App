@@ -94,7 +94,7 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
-
+    implementation("com.razorpay:checkout:1.6.33")
     // For web scraping (uncomment when needed)
     // implementation(libs.bundles.networking)
     implementation("com.google.firebase:firebase-auth-ktx:22.3.1")

@@ -11,6 +11,7 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
+val SemiTransparentPink = Color(0x80F498AD) // 0x80 = 50% alpha
 
 private val LightColorScheme = lightColorScheme(
     primary = Purple40,
@@ -18,15 +19,17 @@ private val LightColorScheme = lightColorScheme(
     primaryContainer = Color(0xFFE0D7FF),       // Light lavender
     onPrimaryContainer = Color(0xFF1E0061),
 
+
     secondary = PurpleGrey40,
     onSecondary = Color.White,
     secondaryContainer = Color(0xFFE5E0F2),     // Pale gray-purple
     onSecondaryContainer = Color(0xFF2F2A3A),
+    tertiary = Color.LightGray,
 
-    tertiary = Pink40,
     onTertiary = Color.White,
     tertiaryContainer = Color(0xFFFFD6E8),      // Light pink
     onTertiaryContainer = Color(0xFF4D0030),
+ // Correct 8-digit ARGB hex
 
     background = Color.White,
     onBackground = Color.Black,
@@ -45,8 +48,8 @@ private val DarkColorScheme = darkColorScheme(
     onSecondary = Color.Black,
     secondaryContainer = Color(0xFF3D3A51),     // Dark gray-purple
     onSecondaryContainer = Color(0xFFE5E0F2),
+    tertiary = SemiTransparentPink,
 
-    tertiary = Pink80,
     onTertiary = Color.Black,
     tertiaryContainer = Color(0xFF633B54),      // Dark pink-brown
     onTertiaryContainer = Color(0xFFFFD6E8),
