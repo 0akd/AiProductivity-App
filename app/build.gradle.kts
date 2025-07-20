@@ -109,7 +109,11 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.bundles.lifecycle)
     implementation(libs.androidx.activity.compose)
-
+    implementation("io.ktor:ktor-client-core:2.3.0")
+    implementation("io.ktor:ktor-client-cio:2.3.0")
+    implementation("io.ktor:ktor-client-logging:2.3.4")
+    implementation("io.ktor:ktor-client-content-negotiation:2.3.0")
+    implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.0")
     // Compose BOM
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.bundles.compose)

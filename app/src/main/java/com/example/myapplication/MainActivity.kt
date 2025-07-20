@@ -2,6 +2,7 @@
 
 package com.example.myapplication
 
+
 import com.razorpay.Checkout
 import com.razorpay.PaymentResultListener
 
@@ -64,6 +65,10 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import android.app.NotificationChannel
+import android.app.NotificationManager
+
+import android.os.Build
 
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
@@ -77,24 +82,58 @@ data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
 val LocalThemeToggle = compositionLocalOf {
     ThemeToggle(false) {}
 }
+fun createNotificationChannel(context: Context) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val name = "LeetCode Problems"
+        val descriptionText = "Notifications for random LeetCode problems"
+        val importance = NotificationManager.IMPORTANCE_DEFAULT
+        val channel = NotificationChannel("leetcode_channel_id", name, importance).apply {
+            description = descriptionText
+        }
 
+        val notificationManager: NotificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.createNotificationChannel(channel)
+    }
+}
 class MainActivity : ComponentActivity(), PaymentResultListener {
     var isPremiumPurchase = false
+
+    // Add these properties to store notification data
+    private var notificationProblemSlug by mutableStateOf<String?>(null)
+    private var notificationProblemUrl by mutableStateOf<String?>(null)
+
+    private fun handleNotificationClick(intent: Intent?) {
+        if (intent?.getBooleanExtra("from_notification", false) == true) {
+            val problemSlug = intent.getStringExtra("problem_slug") ?: ""
+            val problemUrl = intent.getStringExtra("problem_url") ?: ""
+            val openProblemDetail = intent.getBooleanExtra("open_problem_detail", false)
+
+            if (openProblemDetail && problemSlug.isNotEmpty()) {
+                notificationProblemSlug = problemSlug
+                notificationProblemUrl = problemUrl
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Handle notification click BEFORE setContent
+        handleNotificationClick(intent)
+
         Checkout.preload(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        createNotificationChannel(this)
         setContent {
             val context = LocalContext.current
             val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
-           var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("is_dark", true)) }
-
+            var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("is_dark", true)) }
 
             var isPremium by remember { mutableStateOf(false) }
             val user = remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
 
-            // 🔄 Keep FirebaseAuth in sync
+            // Your existing LaunchedEffects...
             LaunchedEffect(Unit) {
                 FirebaseAuth.getInstance().addAuthStateListener { auth ->
                     user.value = auth.currentUser
@@ -106,7 +145,6 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 }
             }
 
-            // ✅ Check Firestore premium if user is logged in
             LaunchedEffect(user.value) {
                 user.value?.email?.let { email ->
                     Premium.checkIfPremium(email) { result ->
@@ -120,16 +158,25 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 prefs.edit().putBoolean("is_dark", it).apply()
             }) {
                 MyApplicationTheme(darkTheme = isDarkTheme) {
-//                    if (user.value == null) {
-//                        AuthScreen()
-//                    } else
-
-                        MainScreen(isPremium = isPremium)
-
+                    // Pass notification data to MainScreen
+                    MainScreen(
+                        isPremium = isPremium,
+                        notificationProblemSlug = notificationProblemSlug,
+                        notificationProblemUrl = notificationProblemUrl,
+                        onNotificationHandled = {
+                            notificationProblemSlug = null
+                            notificationProblemUrl = null
+                        }
+                    )
                 }
             }
         }
+    }
 
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationClick(intent)
     }
 
     override fun onPaymentSuccess(razorpayPaymentID: String) {
@@ -252,7 +299,12 @@ fun WebsitesList() {
 }
 
 @Composable
-fun MainScreen(isPremium: Boolean = false) {
+fun MainScreen(
+    isPremium: Boolean,
+    notificationProblemSlug: String? = null,
+    notificationProblemUrl: String? = null,
+    onNotificationHandled: () -> Unit = {}
+) {
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed) // ✅ Declare this
     val scope = rememberCoroutineScope()
@@ -260,6 +312,12 @@ fun MainScreen(isPremium: Boolean = false) {
 
 
     var currentScreen by remember { mutableStateOf("Scrape") } // default
+    LaunchedEffect(notificationProblemSlug) {
+        if (notificationProblemSlug != null) {
+            currentScreen = "Leet"
+            ScreenPrefs.saveScreen(context, "Leet")
+        }
+    }
     LaunchedEffect(Unit) {
         currentScreen = ScreenPrefs.getSavedScreen(context)
     }
@@ -325,7 +383,7 @@ fun MainScreen(isPremium: Boolean = false) {
                     val screens = if (isPremium) {
                         listOf("Home", "Todo", "Scrape", "Premium Features", "Donate")
                     } else {
-                        listOf("Home", "Todo",  "Scrape","Donate","Login/Signup" )//"Buy Premium"
+                        listOf("Home", "Todo",  "Scrape","Donate","Login/Signup","Leet" )//"Buy Premium"
                     }
 
                     screens.forEach { screen ->
@@ -407,6 +465,10 @@ fun MainScreen(isPremium: Boolean = false) {
 
                         .background(MaterialTheme.colorScheme.background),){AuthScreen()}
                     "Full" -> Hack()
+                    "Leet" -> LeetCodeScreen(
+                        notificationProblemSlug = notificationProblemSlug,
+                        onNotificationHandled = onNotificationHandled
+                    )
                     "Buy Premium" -> PremiumScreen {
                         // You can do any of these:
                         // - Show a toast

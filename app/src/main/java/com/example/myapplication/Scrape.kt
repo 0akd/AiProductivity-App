@@ -46,11 +46,13 @@ import retrofit2.http.Streaming
 
 
 data class ScrapedContent(
-    val title: String,
-    val description: String,
-    val additionalInfo: String,
-    val sourceUrl: String
+    val title: String = "",
+    val content: String = "",
+    val sourceUrl: String = "",
+    val description: String = "",
+    val additionalInfo: String = ""
 )
+
 data class AwanMessage(val role: String, val content: String)
 
 @Composable
@@ -128,10 +130,14 @@ fun ScraperScreen() {
         var searchQuery by remember { mutableStateOf("") }
         val context = LocalContext.current
         val urlList = listOf(
-            "https://devpost.com/hackathons?challenge_type[]=online&page=4&status[]=open",
             "https://unstop.com/hackathons?page=1",
-            "https://devpost.com/hackathons?challenge_type[]=online&status[]=upcoming",
+            "https://devpost.com/hackathons?challenge_type[]=online&page=4&status[]=open",
+            "https://unstop.com/hackathons?page=2",
+
+
             "https://devfolio.co/search?primary_filter=hackathons&type=application_open",
+            "https://unstop.com/hackathons?page=3",
+            "https://devpost.com/hackathons?challenge_type[]=online&status[]=upcoming",
             "https://devpost.com/hackathons?challenge_type[]=in-person&page=2&status[]=open",
             "https://devpost.com/hackathons?challenge_type[]=in-person&page=3&status[]=upcoming",
             "https://www.hackerearth.com/challenges/hackathon/"
@@ -818,7 +824,7 @@ fun ChatPopup(
         onStreamChunk: (String) -> Unit,
         onStreamComplete: (String) -> Unit
     ) {
-        val welcomeText = "Hello there , are you having difficult time to find good hackathons, no problem just tell me your tech stack, skills or anything or just type - bring me hackathons powered by faangs "
+        val welcomeText = "Hello there how can i help you? ( Note - I know in detail about all the hackathons and dsa questions listed in the app )"
 
         onStreamStart()
 
@@ -848,7 +854,7 @@ fun ChatPopup(
                 },
                 onStreamComplete = { finalMessage ->
                     isStreaming = false
-                    chatMessages = listOf(AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", finalMessage))
+                    chatMessages = listOf(AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language", finalMessage))
                     streamingMessage = ""
                 }
             )
@@ -921,7 +927,7 @@ fun ChatPopup(
                         if (isStreaming && streamingMessage.isNotEmpty()) {
                             item {
                                 ChatMessageCard(
-                                    message = AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", streamingMessage),
+                                    message = AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language", streamingMessage),
                                     isUser = false,
                                     isStreaming = true
                                 )
@@ -983,13 +989,13 @@ fun ChatPopup(
                                     },
                                     onStreamComplete = { finalMessage ->
                                         isStreaming = false
-                                        chatMessages = chatMessages + AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", finalMessage)
+                                        chatMessages = chatMessages + AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language", finalMessage)
                                         streamingMessage = ""
                                     },
                                     onError = { error ->
                                         isLoading = false
                                         isStreaming = false
-                                        chatMessages = chatMessages + AwanMessage("A hackathon master list of hackathons that you will get with input you try best to output the best hackathons just by there title as you analyse each word of the title deeply but always act like you have full detail of hackathon and not just the title", "❌ Error: $error")
+                                        chatMessages = chatMessages + AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language", "❌ Error: $error")
                                         streamingMessage = ""
                                     }
                                 )
