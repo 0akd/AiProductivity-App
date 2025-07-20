@@ -721,6 +721,79 @@ suspend fun fetchProblemCategory(slug: String): ProblemCategory {
         ProblemCategory(error = e.message)
     }
 }
+@Composable
+fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
+    val context = LocalContext.current
+    var isScheduled by remember { mutableStateOf(isNotificationScheduled(context)) }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                if (isScheduled) {
+                    stopHourlyNotifications(context)
+                    isScheduled = false
+                } else {
+                    scheduleHourlyNotifications(context)
+                    isScheduled = true
+                }
+            } else {
+                Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
+    Column {
+        Button(
+            onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val granted = ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (granted) {
+                        if (isScheduled) {
+                            stopHourlyNotifications(context)
+                            isScheduled = false
+                        } else {
+                            scheduleHourlyNotifications(context)
+                            isScheduled = true
+                        }
+                    } else {
+                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                } else {
+                    if (isScheduled) {
+                        stopHourlyNotifications(context)
+                        isScheduled = false
+                    } else {
+                        scheduleHourlyNotifications(context)
+                        isScheduled = true
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = if (isScheduled) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            } else {
+                ButtonDefaults.buttonColors()
+            }
+        ) {
+            Text(
+                if (isScheduled) "Stop Hourly Notifications" else "Start Hourly Notifications"
+            )
+        }
+
+        // Manual send button
+
+    }
+}
+
 
 // Modified LeetCodeScreen with category fetching
 @Composable
@@ -887,7 +960,7 @@ fun LeetCodeScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(bottom = 16.dp)
                             )
-
+LeetCodeNotificationButton(problems)
                         }
                     }
 
