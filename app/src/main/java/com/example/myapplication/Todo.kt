@@ -49,10 +49,11 @@ data class CardItem(
     val id: String = java.util.UUID.randomUUID().toString(),
     val name: String,
     val description: String,
-    val value: Int = 0
+    val value: Int = 0,
+    val priority: Int
 ) {
     // Empty constructor for Firestore
-    constructor() : this("", "", "", 0)
+    constructor() : this("", "", "", 0,0)
 }
 
 class CardRepository(private val context: Context) {
@@ -151,7 +152,7 @@ fun CardListManager() {
             isLoading = false
         }
     }
-
+    var showConfirmDialog by remember { mutableStateOf(false) }
     // Save cards whenever the list changes (but don't save on initial load)
     LaunchedEffect(cards) {
         if (!isLoading && cards.isNotEmpty()) {
@@ -244,12 +245,7 @@ fun CardListManager() {
             ) {
                 // Reset Button
                 IconButton(
-                    onClick = {
-                        scope.launch {
-                            cards = cards.map { it.copy(value = 0) }
-                            repository.saveCards(cards)
-                        }
-                    },
+                    onClick = { showConfirmDialog = true },
                     modifier = Modifier
                         .background(
                             Color(0xFF6200EE),
@@ -280,13 +276,39 @@ fun CardListManager() {
 
     }
 
+
+// 2. AlertDialog (shown only when showConfirmDialog is true)
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("Reset All Cards") },
+            text = { Text("Are you sure you want to reset all card values?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // Reset logic
+                        scope.launch {
+                            cards = cards.map { it.copy(value = 0) }
+                            repository.saveCards(cards)
+                        }
+                        showConfirmDialog = false // Close dialog
+                    }
+                ) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showConfirmDialog = false }
+                ) { Text("Cancel") }
+            }
+        )
+    }
     // Add Card Dialog
     if (showAddDialog) {
         AddEditCardDialog(
             card = null,
             onDismiss = { showAddDialog = false },
             onSave = { name, description ->
-                cards = cards + CardItem(name = name, description = description)
+                cards = cards + CardItem(name = name, description = description,   priority = cards.size)
                 showAddDialog = false
             }
         )
@@ -325,6 +347,10 @@ fun CardListManager() {
         )
     }
 }
+// 1. State for dialog visibility
+
+
+
 // Alternative approach: Modify the SwipeableCard to get current value dynamically
 @Composable
 fun SwipeableCard(
