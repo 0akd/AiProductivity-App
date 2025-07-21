@@ -75,6 +75,7 @@ import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.runtime.*
 import androidx.core.view.WindowCompat
+import com.example.resumebuilder.ResumeBuilderApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.FirebaseApp
 data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
@@ -311,7 +312,7 @@ fun MainScreen(
 
 
 
-    var currentScreen by remember { mutableStateOf("Scrape") } // default
+    var currentScreen by remember { mutableStateOf("Todo") } // default
     LaunchedEffect(notificationProblemSlug) {
         if (notificationProblemSlug != null) {
             currentScreen = "Leet"
@@ -457,8 +458,8 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
-                    "Home" -> HomeScreen()
-                    "Todo" -> CardManagerApp()
+                    "Home" -> ResumeBuilderApp()
+                    "Todo" -> CardListManager()
                     "Scrape" -> ScraperScreen()
                     "Login/Signup"->Box(    modifier = Modifier
                         .fillMaxSize()
