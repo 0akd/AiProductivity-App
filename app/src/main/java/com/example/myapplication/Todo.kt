@@ -1,536 +1,246 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.example.myapplication
 
-import androidx.compose.material.icons.filled.*
-import com.example.myapplication.ui.theme.MyApplicationTheme
-import androidx.compose.foundation.clickable
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.foundation.combinedClickable
-import kotlinx.coroutines.delay
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.filled.KeyboardArrowUp
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.foundation.background
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.ui.draw.alpha
-
+// MainActivity.kt
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.decodeFromString
+import androidx.navigation.NavController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.delay
+
+data class Question(
+    val id: Int,
+    val text: String,
+    var isChecked: Boolean = false
+)
+
+data class Card(
+    val id: String,
+    val title: String,
+    val questions: List<Question>,
+    var isCompleted: Boolean = false,
+    var counter: Int = 0,
+    var timerSeconds: Long = 0L
+)
+
 
 @OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CardManagerApp() {
+    val navController = rememberNavController()
+    val context = LocalContext.current
+    val sharedPrefs = remember { context.getSharedPreferences("card_prefs", Context.MODE_PRIVATE) }
 
-enum class TodoType(val label: String, val icon: String) {
-    CHECKLIST("Checklist", "✓"),
-    COUNTER("Counter", "#"),
-    TIMER("Timer", "⏱")
+    NavHost(navController = navController, startDestination = "main") {
+        composable("main") {
+            MainScreen(navController, sharedPrefs)
+        }
+        composable("card_detail/{cardId}") { backStackEntry ->
+            val cardId = backStackEntry.arguments?.getString("cardId") ?: ""
+            CardDetailScreen(navController, sharedPrefs, cardId)
+        }
+    }
 }
 
-@Serializable
-data class ChecklistItem(
-    val text: String,
-    val checked: Boolean = false
-)
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MainScreen(navController: NavController, sharedPrefs: SharedPreferences) {
+    var cards by remember { mutableStateOf(loadCards(sharedPrefs)) }
+    var showAddCardDialog by remember { mutableStateOf(false) }
+    var showEditCardDialog by remember { mutableStateOf(false) }
+    var cardToEdit by remember { mutableStateOf<Card?>(null) }
 
-@Serializable
-data class Task(
-    val id: Long = System.currentTimeMillis(),
-    val text: String,
-    val description: String = "",
-    val isDone: Boolean = false,
-    val type: TodoType = TodoType.CHECKLIST,
-    val counterValue: Int = 0,
-    val checklistItems: List<ChecklistItem> = emptyList(),
-    val timerSeconds: Int = 0
-)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Card Manager") }
+            )
+        },
+        floatingActionButton = {
+            Column {
+                FloatingActionButton(
+                    onClick = { showAddCardDialog = true },
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Card")
+                }
 
-class TaskStorage(context: Context) {
-    private val sharedPreferences: SharedPreferences =
-        context.getSharedPreferences("todo_tasks", Context.MODE_PRIVATE)
-    private val taskPrefs: SharedPreferences =
-        context.getSharedPreferences("task_prefs", Context.MODE_PRIVATE)
-
-    private val json = Json { ignoreUnknownKeys = true }
-
-    fun saveTasks(tasks: List<Task>) {
-        val tasksJson = json.encodeToString(tasks)
-        sharedPreferences.edit().putString("tasks_list", tasksJson).apply()
-    }
-
-    fun loadTasks(): List<Task> {
-        val tasksJson = sharedPreferences.getString("tasks_list", null)
-        return if (tasksJson != null) {
-            try {
-                json.decodeFromString<List<Task>>(tasksJson)
-            } catch (e: Exception) {
-                emptyList()
+                FloatingActionButton(
+                    onClick = {
+                        cards = cards.map { card ->
+                            card.copy(
+                                questions = card.questions.map { it.copy(isChecked = false) },
+                                isCompleted = false
+                            )
+                        }
+                        saveCards(sharedPrefs, cards)
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondary
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reset All Checkboxes")
+                }
             }
-        } else {
-            emptyList()
+        },
+        floatingActionButtonPosition = FabPosition.End
+    ) { paddingValues ->
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(cards) { card ->
+                CardItem(
+                    card = card,
+                    onClick = {
+                        navController.navigate("card_detail/${card.id}")
+                    },
+                    onEdit = {
+                        cardToEdit = card
+                        showEditCardDialog = true
+                    },
+                    onDelete = {
+                        cards = cards.filter { it.id != card.id }
+                        saveCards(sharedPrefs, cards)
+                    }
+                )
+            }
         }
     }
 
-    fun saveTaskValue(key: String, value: Int) {
-        taskPrefs.edit().putInt(key, value).apply()
+    if (showAddCardDialog) {
+        AddCardDialog(
+            onDismiss = { showAddCardDialog = false },
+            onConfirm = { cardTitle, questionTexts ->
+                val newCard = createNewCard(cardTitle, questionTexts)
+                cards = cards + newCard
+                saveCards(sharedPrefs, cards)
+                showAddCardDialog = false
+            }
+        )
     }
 
-    fun getTaskValue(key: String): Int {
-        return taskPrefs.getInt(key, 0)
-    }
-
-    fun saveChecklistState(taskId: Long, index: Int, checked: Boolean) {
-        taskPrefs.edit().putBoolean("checklist_${taskId}_${index}", checked).apply()
-    }
-
-    fun getChecklistState(taskId: Long, index: Int): Boolean {
-        return taskPrefs.getBoolean("checklist_${taskId}_${index}", false)
-    }
-
-    fun resetAllTaskData() {
-        taskPrefs.edit().clear().apply()
+    if (showEditCardDialog && cardToEdit != null) {
+        EditCardDialog(
+            card = cardToEdit!!,
+            onDismiss = {
+                showEditCardDialog = false
+                cardToEdit = null
+            },
+            onConfirm = { updatedCard ->
+                cards = cards.map { if (it.id == updatedCard.id) updatedCard else it }
+                saveCards(sharedPrefs, cards)
+                showEditCardDialog = false
+                cardToEdit = null
+            }
+        )
     }
 }
 
-// Extension functions for cleaner code
-fun Context.getTaskStorage() = TaskStorage(this)
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TaskItem(
-    task: Task,
-    onTaskToggle: (Task) -> Unit,
-    onTaskDelete: (Task) -> Unit,
-    onTaskEdit: (Task) -> Unit,
-    onTaskClick: (Task) -> Unit,
-    setFocus: (Task) -> Unit
+fun CardItem(
+    card: Card,
+    onClick: () -> Unit,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    var isExpanded by remember { mutableStateOf(false) }
-    val alpha by animateFloatAsState(
-        targetValue = if (task.isDone) 0.6f else 1f,
-        label = "Task Alpha"
-    )
-
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp)
-            .alpha(alpha)
-            .combinedClickable(
-                onClick = { onTaskClick(task) },
-                onLongClick = { setFocus(task) }
-            ),
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(12.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (task.isDone)
-                MaterialTheme.colorScheme.surfaceVariant
-            else
-                MaterialTheme.colorScheme.surface
-        )
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            // Task header with type indicator
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Type indicator
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = MaterialTheme.colorScheme.primaryContainer,
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = task.type.icon,
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.width(12.dp))
-
-                    Text(
-                        text = task.text,
-                        style = MaterialTheme.typography.titleMedium,
-                        textDecoration = if (task.isDone) TextDecoration.LineThrough else null,
-                        color = if (task.isDone)
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        else
-                            MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                Text(
+                    text = card.title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = if (card.isCompleted) Color.Gray else MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
 
                 Row {
-                    IconButton(
-                        onClick = { onTaskEdit(task) },
-                        modifier = Modifier.size(32.dp)
-                    ) {
+                    IconButton(onClick = onEdit) {
                         Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = "Edit",
-                            modifier = Modifier.size(18.dp),
+                            Icons.Default.Edit,
+                            contentDescription = "Edit Card",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    IconButton(
-                        onClick = { onTaskDelete(task) },
-                        modifier = Modifier.size(32.dp)
-                    ) {
+                    IconButton(onClick = onDelete) {
                         Icon(
-                            imageVector = Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            modifier = Modifier.size(18.dp),
+                            Icons.Default.Delete,
+                            contentDescription = "Delete Card",
                             tint = MaterialTheme.colorScheme.error
                         )
                     }
                 }
             }
 
-            // Description section
-            if (task.description.isNotBlank()) {
+            if (!card.isCompleted) {
                 Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "${card.questions.count { it.isChecked }}/${card.questions.size} completed",
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
-                        text = task.description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = if (isExpanded) Int.MAX_VALUE else 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
+                        text = "Counter: ${card.counter}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    if (task.description.length > 50) {
-                        IconButton(
-                            onClick = { isExpanded = !isExpanded },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (isExpanded)
-                                    Icons.Default.KeyboardArrowUp
-                                else
-                                    Icons.Default.KeyboardArrowDown,
-                                contentDescription = "Toggle Description",
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
+                    Text(
+                        text = "Time: ${formatTime(card.timerSeconds)}",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun ChecklistDialog(
-    task: Task,
-    onClose: () -> Unit,
-    onTaskUpdate: (Task) -> Unit,
-    storage: TaskStorage
-) {
-    var currentItems by remember {
-        mutableStateOf(
-            task.checklistItems.mapIndexed { index, item ->
-                item.copy(checked = storage.getChecklistState(task.id, index))
-            }
-        )
-    }
-
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = {
-            Text("${task.type.icon} ${task.text}")
-        },
-        text = {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 300.dp)
-            ) {
-                items(currentItems.size) { index ->
-                    val item = currentItems[index]
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 2.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = if (item.checked)
-                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                            else
-                                MaterialTheme.colorScheme.surface
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(
-                                checked = item.checked,
-                                onCheckedChange = { isChecked ->
-                                    currentItems = currentItems.toMutableList().apply {
-                                        set(index, item.copy(checked = isChecked))
-                                    }
-                                    storage.saveChecklistState(task.id, index, isChecked)
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = item.text,
-                                style = MaterialTheme.typography.bodyMedium,
-                                textDecoration = if (item.checked) TextDecoration.LineThrough else null,
-                                color = if (item.checked)
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                else
-                                    MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                val updatedTask = task.copy(
-                    checklistItems = currentItems,
-                    isDone = currentItems.all { it.checked }
-                )
-                onTaskUpdate(updatedTask)
-                onClose()
-            }) {
-                Text("Done")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onClose) {
-                Text("Cancel")
-            }
-        }
-    )
-}
-
-@Composable
-fun CounterDialog(
-    task: Task,
-    onClose: () -> Unit,
-    storage: TaskStorage
-) {
-    var count by remember { mutableIntStateOf(storage.getTaskValue("counter_${task.id}")) }
-
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = {
-            Text("${task.type.icon} ${task.text}")
-        },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = count.toString(),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilledTonalButton(
-                        onClick = {
-                            count = maxOf(0, count - 1)
-                            storage.saveTaskValue("counter_${task.id}", count)
-                        }
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease")
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            count = 0
-                            storage.saveTaskValue("counter_${task.id}", count)
-                        }
-                    ) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reset")
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            count++
-                            storage.saveTaskValue("counter_${task.id}", count)
-                        }
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onClose) {
-                Text("Close")
-            }
-        }
-    )
-}
-
-@Composable
-fun TimerDialog(
-    task: Task,
-    onClose: () -> Unit,
-    storage: TaskStorage
-) {
-    var seconds by remember { mutableIntStateOf(storage.getTaskValue("timer_${task.id}")) }
-    var isRunning by remember { mutableStateOf(false) }
-
-    LaunchedEffect(isRunning) {
-        while (isRunning) {
-            delay(1000)
-            seconds++
-            storage.saveTaskValue("timer_${task.id}", seconds)
-        }
-    }
-
-    AlertDialog(
-        onDismissRequest = {
-            isRunning = false
-            onClose()
-        },
-        title = {
-            Text("${task.type.icon} ${task.text}")
-        },
-        text = {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(16.dp)
-            ) {
-                Text(
-                    text = String.format("%02d:%02d", seconds / 60, seconds % 60),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    FilledTonalButton(
-                        onClick = { isRunning = !isRunning }
-                    ) {
-                        Icon(
-                            imageVector = if (isRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isRunning) "Pause" else "Start"
-                        )
-                    }
-
-                    FilledTonalButton(
-                        onClick = {
-                            isRunning = false
-                            seconds = 0
-                            storage.saveTaskValue("timer_${task.id}", seconds)
-                        }
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = "Stop")
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                isRunning = false
-                onClose()
-            }) {
-                Text("Close")
-            }
-        }
-    )
-}
-
-@Composable
-fun TaskTypeDropdown(
-    selectedType: TodoType,
-    onTypeSelected: (TodoType) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
-        modifier = modifier
-    ) {
-        OutlinedTextField(
-            value = "${selectedType.icon} ${selectedType.label}",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Task Type") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded) },
-            modifier = Modifier.menuAnchor()
-        )
-
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            TodoType.values().forEach { type ->
-                DropdownMenuItem(
-                    text = {
-                        Text("${type.icon} ${type.label}")
-                    },
-                    onClick = {
-                        onTypeSelected(type)
-                        expanded = false
-                    }
-                )
             }
         }
     }
@@ -538,407 +248,505 @@ fun TaskTypeDropdown(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun TodoApp(setFocus: (Task) -> Unit) {
+fun CardDetailScreen(navController: NavController, sharedPrefs: SharedPreferences, cardId: String) {
+    var cards by remember { mutableStateOf(loadCards(sharedPrefs)) }
+    val card = cards.find { it.id == cardId } ?: return
     val context = LocalContext.current
-    val storage = remember { context.getTaskStorage() }
-    val keyboardController = LocalSoftwareKeyboardController.current
+    var questions by remember { mutableStateOf(card.questions) }
+    var counter by remember { mutableStateOf(card.counter) }
+    var timerSeconds by remember { mutableStateOf(card.timerSeconds) }
+    var isTimerRunning by remember { mutableStateOf(false) }
 
-    // State variables
-    var tasks by remember { mutableStateOf(storage.loadTasks()) }
-    var newTaskText by remember { mutableStateOf("") }
-    var newTaskDescription by remember { mutableStateOf("") }
-    var newTaskType by remember { mutableStateOf(TodoType.CHECKLIST) }
-    var showInputFields by remember { mutableStateOf(false) }
-    var editingTask by remember { mutableStateOf<Task?>(null) }
-    var editedText by remember { mutableStateOf("") }
-    var editedDescription by remember { mutableStateOf("") }
-    var taskToDelete by remember { mutableStateOf<Task?>(null) }
-    var showResetDialog by remember { mutableStateOf(false) }
-
-    // Dialog states
-    var selectedTask by remember { mutableStateOf<Task?>(null) }
-    var showChecklistDialog by remember { mutableStateOf(false) }
-    var showCounterDialog by remember { mutableStateOf(false) }
-    var showTimerDialog by remember { mutableStateOf(false) }
-
-    // Save tasks whenever the tasks list changes
-    LaunchedEffect(tasks) {
-        storage.saveTasks(tasks)
-    }
-
-    // Helper function to create new task
-    fun createNewTask(): Task {
-        val newTask = Task(
-            id = System.currentTimeMillis(),
-            text = newTaskText.trim(),
-            description = newTaskDescription.trim(),
-            type = newTaskType
-        )
-
-        return when (newTaskType) {
-            TodoType.CHECKLIST -> newTask.copy(
-                checklistItems = listOf(
-                    ChecklistItem("Task item 1", false),
-                    ChecklistItem("Task item 2", false),
-                    ChecklistItem("Task item 3", false)
-                )
-            )
-            else -> newTask
+    // Timer effect
+    LaunchedEffect(isTimerRunning) {
+        while (isTimerRunning) {
+            delay(1000L)
+            timerSeconds++
+            updateCardTimerAndCounter(sharedPrefs, cardId, counter, timerSeconds)
         }
     }
 
-    // Helper function to add new task
-    fun addNewTask() {
-        if (newTaskText.isNotBlank()) {
-            val newTask = createNewTask()
-            tasks = listOf(newTask) + tasks
-            newTaskText = ""
-            newTaskDescription = ""
-            newTaskType = TodoType.CHECKLIST
-            keyboardController?.hide()
-            showInputFields = false
+    LaunchedEffect(questions) {
+        if (questions.all { it.isChecked }) {
+            val updatedCards = cards.map {
+                if (it.id == cardId) it.copy(
+                    isCompleted = true,
+                    questions = questions,
+                    counter = counter,
+                    timerSeconds = timerSeconds
+                )
+                else it
+            }
+            cards = updatedCards
+            saveCards(sharedPrefs, updatedCards)
+            isTimerRunning = false
+            navController.popBackStack()
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Header
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(card.title) },
+                navigationIcon = {
+                    IconButton(onClick = {
+                        updateCardTimerAndCounter(sharedPrefs, cardId, counter, timerSeconds)
+                        navController.popBackStack()
+                    }) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                    }
+                }
             )
-        ) {
-            Column(
-                modifier = Modifier.padding(20.dp)
-            ) {
-                Text(
-                    text = "My Tasks",
-                    style = MaterialTheme.typography.headlineLarge,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                Text(
-                    text = "${tasks.size} tasks • ${tasks.count { it.isDone }} completed",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                )
+        },
+        floatingActionButton = {
+            Column {
+                FloatingActionButton(
+                    onClick = { isTimerRunning = !isTimerRunning },
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) {
+                    Icon(
+                        if (isTimerRunning) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isTimerRunning) "Pause Timer" else "Start Timer"
+                    )
+                }
+
+                FloatingActionButton(
+                    onClick = {
+                        questions = questions.map { it.copy(isChecked = false) }
+                        counter = 0
+                        timerSeconds = 0L
+                        isTimerRunning = false
+                        val updatedCards = cards.map {
+                            if (it.id == cardId) it.copy(
+                                isCompleted = false,
+                                questions = questions,
+                                counter = counter,
+                                timerSeconds = timerSeconds
+                            )
+                            else it
+                        }
+                        cards = updatedCards
+                        saveCards(sharedPrefs, updatedCards)
+                    },
+                    containerColor = MaterialTheme.colorScheme.secondary
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = "Reset")
+                }
             }
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Add Task Button
-        FilledTonalButton(
-            onClick = { showInputFields = !showInputFields },
-            modifier = Modifier.fillMaxWidth()
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(16.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Add,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(if (showInputFields) "Hide Task Form" else "Add New Task")
-        }
-
-        // Add Task Form
-        AnimatedVisibility(visible = showInputFields) {
+            // Counter and Timer Display
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    OutlinedTextField(
-                        value = newTaskText,
-                        onValueChange = { newTaskText = it },
-                        label = { Text("Task Title") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next)
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = newTaskDescription,
-                        onValueChange = { newTaskDescription = it },
-                        label = { Text("Description (optional)") },
-                        modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                        keyboardActions = KeyboardActions(
-                            onDone = { addNewTask() }
-                        ),
-                        minLines = 2
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    TaskTypeDropdown(
-                        selectedType = newTaskType,
-                        onTypeSelected = { newTaskType = it },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(
-                            onClick = {
-                                newTaskText = ""
-                                newTaskDescription = ""
-                                newTaskType = TodoType.CHECKLIST
-                                showInputFields = false
-                            }
-                        ) {
-                            Text("Cancel")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Counter",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = counter.toString(),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                         Button(
-                            onClick = { addNewTask() },
-                            enabled = newTaskText.isNotBlank()
+                            onClick = {
+                                counter--
+                                updateCardTimerAndCounter(sharedPrefs, cardId, counter, timerSeconds)
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
                         ) {
-                            Text("Add Task")
+                            Text("-")
                         }
+                        Button(
+                            onClick = {
+                                counter++
+                                updateCardTimerAndCounter(sharedPrefs, cardId, counter, timerSeconds)
+                            },
+                            modifier = Modifier.padding(top = 8.dp)
+                        ) {
+                            Text("+")
+                        }
+                    }
+
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "Timer",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            text = formatTime(timerSeconds),
+                            fontSize = 24.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = if (isTimerRunning) "Running" else "Stopped",
+                            fontSize = 12.sp,
+                            color = if (isTimerRunning) Color.Green else Color.Gray
+                        )
+                        TimerAndCounterEditor(
+                            sharedPrefs = sharedPrefs,
+                            cardId = cardId,
+                            onUpdated = { updatedCounter, updatedTimer ->
+                                counter = updatedCounter
+                                timerSeconds = updatedTimer
+                                Toast.makeText(context, "Card updated!", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+
+
+
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-        // Task List
-        if (tasks.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "📝",
-                        style = MaterialTheme.typography.displayMedium
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "No tasks yet!",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "Add your first task above",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        } else {
             LazyColumn(
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                items(tasks.size) { index ->
-                    val task = tasks[index]
-
-                    if (editingTask?.id == task.id) {
-                        // Edit Task Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                            )
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = editedText,
-                                    onValueChange = { editedText = it },
-                                    label = { Text("Task Title") },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                OutlinedTextField(
-                                    value = editedDescription,
-                                    onValueChange = { editedDescription = it },
-                                    label = { Text("Description") },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    minLines = 2
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    TextButton(
-                                        onClick = { editingTask = null }
-                                    ) {
-                                        Text("Cancel")
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Button(
-                                        onClick = {
-                                            tasks = tasks.map {
-                                                if (it.id == task.id) {
-                                                    it.copy(
-                                                        text = editedText,
-                                                        description = editedDescription
-                                                    )
-                                                } else it
-                                            }
-                                            editingTask = null
-                                        }
-                                    ) {
-                                        Text("Save")
-                                    }
+                items(questions.size) { index ->
+                    val question = questions[index]
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = question.isChecked,
+                            onCheckedChange = { isChecked ->
+                                questions = questions.toMutableList().apply {
+                                    this[index] = question.copy(isChecked = isChecked)
                                 }
+                                val updatedCards = cards.map {
+                                    if (it.id == cardId) it.copy(
+                                        questions = questions,
+                                        counter = counter,
+                                        timerSeconds = timerSeconds
+                                    )
+                                    else it
+                                }
+                                cards = updatedCards
+                                saveCards(sharedPrefs, updatedCards)
                             }
-                        }
-                    } else {
-                        TaskItem(
-                            task = task,
-                            onTaskToggle = { toggledTask ->
-                                tasks = tasks.map {
-                                    if (it.id == toggledTask.id) {
-                                        it.copy(isDone = !it.isDone)
-                                    } else it
-                                }
-                            },
-                            onTaskDelete = { taskToDelete = it },
-                            onTaskEdit = { taskToEdit ->
-                                editingTask = taskToEdit
-                                editedText = taskToEdit.text
-                                editedDescription = taskToEdit.description
-                            },
-                            onTaskClick = { clickedTask ->
-                                selectedTask = clickedTask
-                                when (clickedTask.type) {
-                                    TodoType.CHECKLIST -> showChecklistDialog = true
-                                    TodoType.COUNTER -> showCounterDialog = true
-                                    TodoType.TIMER -> showTimerDialog = true
-                                }
-                            },
-                            setFocus = setFocus
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = question.text,
+                            fontSize = 16.sp,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
             }
         }
+    }
+}
+@Composable
+fun TimerAndCounterEditor(
+    sharedPrefs: SharedPreferences,
+    cardId: String,
+    onUpdated: (Int, Long) -> Unit
+) {
+    val context = LocalContext.current
 
-        // Reset Button
-        if (tasks.isNotEmpty()) {
-            Spacer(modifier = Modifier.height(16.dp))
-            OutlinedButton(
-                onClick = { showResetDialog = true },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Refresh,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
+    var timerText by remember { mutableStateOf("") }
+    var counterText by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(16.dp)) {
+        OutlinedTextField(
+            value = timerText,
+            onValueChange = { timerText = it },
+            label = { Text("Timer Seconds") }
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = counterText,
+            onValueChange = { counterText = it },
+            label = { Text("Counter") }
+        )
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Button(onClick = {
+            val updatedTimer = timerText.toLongOrNull() ?: 0L
+            val updatedCounter = counterText.toIntOrNull() ?: 0
+
+            updateCardTimerAndCounter(sharedPrefs, cardId, updatedCounter, updatedTimer)
+            onUpdated(updatedCounter, updatedTimer)
+        }) {
+            Text("Update Card")
+        }
+    }
+}
+
+
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AddCardDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, List<String>) -> Unit
+) {
+    var cardTitle by remember { mutableStateOf("") }
+    var questionTexts by remember { mutableStateOf(listOf("were you at the verge of death while trying hard to do it , if not go back again", "Question 2", "Question 3")) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Add New Card") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = cardTitle,
+                    onValueChange = { cardTitle = it },
+                    label = { Text("Card Title") },
+                    modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("Reset All Tasks")
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Questions:", fontWeight = FontWeight.Medium)
+                    TextButton(
+                        onClick = {
+                            questionTexts = questionTexts + "New Question"
+                        }
+                    ) {
+                        Text("+ Add Question")
+                    }
+                }
+
+                questionTexts.forEachIndexed { index, text ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { newText ->
+                                questionTexts = questionTexts.toMutableList().apply {
+                                    this[index] = newText
+                                }
+                            },
+                            label = {
+                                Text(if (index == 0) "First Question" else "Question ${index + 1}")
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 4.dp)
+                        )
+                        if (questionTexts.size > 3) {
+                            IconButton(
+                                onClick = {
+                                    questionTexts = questionTexts.filterIndexed { i, _ -> i != index }
+                                }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove Question")
+                            }
+                        }
+                    }
+                }
             }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (cardTitle.isNotBlank()) {
+                        onConfirm(cardTitle, questionTexts.filter { it.isNotBlank() })
+                    }
+                }
+            ) {
+                Text("Add")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EditCardDialog(
+    card: Card,
+    onDismiss: () -> Unit,
+    onConfirm: (Card) -> Unit
+) {
+    var cardTitle by remember { mutableStateOf(card.title) }
+    var questionTexts by remember {
+        mutableStateOf(card.questions.map { it.text }.toMutableList())
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Card") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = cardTitle,
+                    onValueChange = { cardTitle = it },
+                    label = { Text("Card Title") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Questions:", fontWeight = FontWeight.Medium)
+                    TextButton(
+                        onClick = {
+                            questionTexts = questionTexts.toMutableList().apply {
+                                add("New Question")
+                            }
+                        }
+                    ) {
+                        Text("+ Add Question")
+                    }
+                }
+
+                questionTexts.forEachIndexed { index, text ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { newText ->
+                                questionTexts = questionTexts.toMutableList().apply {
+                                    this[index] = newText
+                                }
+                            },
+                            label = { Text("Question ${index + 1}") },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 4.dp)
+                        )
+                        if (questionTexts.size > 3) {
+                            IconButton(
+                                onClick = {
+                                    questionTexts = questionTexts.filterIndexed { i, _ -> i != index }.toMutableList()
+
+                                }
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = "Remove Question")
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    if (cardTitle.isNotBlank()) {
+                        val updatedQuestions = questionTexts
+                            .filter { it.isNotBlank() }
+                            .mapIndexed { index, text ->
+                                Question(
+                                    id = index + 1,
+                                    text = text,
+                                    isChecked = if (index < card.questions.size) card.questions[index].isChecked else false
+                                )
+                            }
+                        onConfirm(card.copy(title = cardTitle, questions = updatedQuestions))
+                    }
+                }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+fun createNewCard(title: String = "", questionTexts: List<String> = emptyList()): Card {
+    val cardNumber = System.currentTimeMillis().toString().takeLast(3)
+    val cardTitle = if (title.isBlank()) "Card $cardNumber" else title
+    val questions = if (questionTexts.isEmpty()) {
+        listOf(
+            Question(1, "were you at the verge of death while trying hard to do it , if not go back again"),
+            Question(2, "Question 2"),
+            Question(3, "Question 3")
+        )
+    } else {
+        questionTexts.mapIndexed { index, text ->
+            Question(index + 1, text)
         }
     }
 
-    // Dialogs
-    if (showChecklistDialog && selectedTask != null) {
-        ChecklistDialog(
-            task = selectedTask!!,
-            onClose = {
-                showChecklistDialog = false
-                selectedTask = null
-            },
-            onTaskUpdate = { updatedTask ->
-                tasks = tasks.map {
-                    if (it.id == updatedTask.id) updatedTask else it
-                }
-            },
-            storage = storage
-        )
-    }
-
-    if (showCounterDialog && selectedTask != null) {
-        CounterDialog(
-            task = selectedTask!!,
-            onClose = {
-                showCounterDialog = false
-                selectedTask = null
-            },
-            storage = storage
-        )
-    }
-
-    if (showTimerDialog && selectedTask != null) {
-        TimerDialog(
-            task = selectedTask!!,
-            onClose = {
-                showTimerDialog = false
-                selectedTask = null
-            },
-            storage = storage
-        )
-    }
-
-    // Delete confirmation dialog
-    if (taskToDelete != null) {
-        AlertDialog(
-            onDismissRequest = { taskToDelete = null },
-            title = { Text("Delete Task") },
-            text = { Text("Are you sure you want to delete '${taskToDelete!!.text}'?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    tasks = tasks.filter { it.id != taskToDelete!!.id }
-                    taskToDelete = null
-                }) {
-                    Text("Delete")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { taskToDelete = null }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    // Reset confirmation dialog
-    if (showResetDialog) {
-        AlertDialog(
-            onDismissRequest = { showResetDialog = false },
-            title = { Text("Reset All Tasks") },
-            text = { Text("This will reset all counters, timers, and checklist items. Are you sure?") },
-            confirmButton = {
-                TextButton(onClick = {
-                    // Reset all task states
-                    tasks = tasks.map { it.copy(isDone = false) }
-                    // Clear all stored values
-                    storage.resetAllTaskData()
-                    showResetDialog = false
-                }) {
-                    Text("Reset")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
+    return Card(
+        id = "card_$cardNumber",
+        title = cardTitle,
+        questions = questions,
+        counter = 0,
+        timerSeconds = 0L
+    )
 }
+
+fun formatTime(seconds: Long): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+    return String.format("%02d:%02d:%02d", hours, minutes, secs)
+}
+
+fun updateCardTimerAndCounter(sharedPrefs: SharedPreferences, cardId: String, counter: Int, timerSeconds: Long) {
+    val cards = loadCards(sharedPrefs)
+    val updatedCards = cards.map { card ->
+        if (card.id == cardId) {
+            card.copy(counter = counter, timerSeconds = timerSeconds)
+        } else {
+            card
+        }
+    }
+    saveCards(sharedPrefs, updatedCards)
+}
+
+fun loadCards(sharedPrefs: SharedPreferences): List<Card> {
+    val cardsJson = sharedPrefs.getString("cards", "[]")
+    val gson = Gson()
+    val type = object : TypeToken<List<Card>>() {}.type
+    return gson.fromJson(cardsJson, type) ?: emptyList()
+}
+
+fun saveCards(sharedPrefs: SharedPreferences, cards: List<Card>) {
+    val gson = Gson()
+    val cardsJson = gson.toJson(cards)
+    sharedPrefs.edit().putString("cards", cardsJson).apply()
+}
+

@@ -1,94 +1,74 @@
 // All necessary imports
 package com.example.myapplication
 
-import android.app.PendingIntent
-import android.util.Log
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
+
+// Required imports
+
+import android.provider.Settings
+
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
-
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
-
-
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-
-import android.content.SharedPreferences
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
-import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
-import androidx.compose.ui.platform.LocalContext
-
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.core.app.NotificationCompat
-import kotlinx.coroutines.*
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.Json
-import kotlinx.coroutines.*
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
-import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
-
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
-import androidx.core.app.NotificationManagerCompat
-// Required imports
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
-import android.view.ViewGroup
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-
-
-
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 object QuestionArrays {
     val array1 = listOf(
@@ -413,34 +393,58 @@ fun getCachedProblems(context: Context): List<EnhancedProblemStat> {
 }
 
 // Notification scheduling functions
-fun scheduleHourlyNotifications(context: Context) {
-    // Cache problems for notifications when scheduling starts
-    // You'll need to call this with your current problems list
+fun scheduleHourlyNotifications(context: Context, problems: List<EnhancedProblemStat>) {
+    // Cache problems FIRST - this is crucial
+    cacheProblemsForNotifications(context, problems)
 
-    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    val intent = Intent(context, LeetCodeNotificationReceiver::class.java)
+
+    val intent = Intent(context, LeetCodeNotificationReceiver::class.java).apply {
+        action = "com.example.myapplication"
+    }
+
     val pendingIntent = PendingIntent.getBroadcast(
         context,
         NOTIFICATION_REQUEST_CODE,
         intent,
         PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
-    sendLeetCodeNotification(context)
-    // Schedule to start 1 hour from now and repeat every hour
-    val startTime = System.currentTimeMillis() + (60 * 60 * 1000) // 1 hour from now
 
-    alarmManager.setRepeating(
-        AlarmManager.RTC_WAKEUP,
-        startTime,
-        AlarmManager.INTERVAL_HOUR,
-        pendingIntent
-    )
+    // Send immediate notification with the cached problems
+    sendLeetCodeNotification(context, problems)
+
+    // Schedule to start 10 seconds from now and repeat every hour
+    val startTime = System.currentTimeMillis() + 10_000
+
+
+    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        if (alarmManager.canScheduleExactAlarms()) {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                startTime,
+                pendingIntent
+            )
+        } else {
+            Toast.makeText(context, "Exact alarm permission not granted. Please enable it in settings.", Toast.LENGTH_LONG).show()
+            // Optionally guide the user to settings:
+            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+            context.startActivity(intent)
+        }
+    } else {
+        alarmManager.setExactAndAllowWhileIdle(
+            AlarmManager.RTC_WAKEUP,
+            startTime,
+            pendingIntent
+        )
+    }
+
 
     // Save scheduling state
     val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
     prefs.edit().putBoolean("notifications_scheduled", true).apply()
 
-    Toast.makeText(context, "Hourly notifications scheduled!", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, "Hourly notifications scheduled! First in 10 seconds.", Toast.LENGTH_SHORT).show()
 }
 
 fun stopHourlyNotifications(context: Context) {
@@ -663,8 +667,48 @@ class LeetCodeNotificationReceiver : BroadcastReceiver() {
             Log.w("LeetCodeNotification", "No cached problems available for notification")
             sendReminderNotification(context)
         }
+
+        // 🔁 Reschedule the next alarm for 1 hour later
+        scheduleNextAlarm(context)
+    }
+
+    private fun scheduleNextAlarm(context: Context) {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val nextTriggerTime = System.currentTimeMillis() + 60 * 60 * 1000 // 1 hour
+
+        val intent = Intent(context, LeetCodeNotificationReceiver::class.java).apply {
+            action = "com.yourapp.LEETCODE_NOTIFICATION"
+        }
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            NOTIFICATION_REQUEST_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (alarmManager.canScheduleExactAlarms()) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    nextTriggerTime,
+                    pendingIntent
+                )
+            } else {
+                Log.w("LeetCodeNotification", "Cannot schedule exact alarm. Permission not granted.")
+            }
+        } else {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                nextTriggerTime,
+                pendingIntent
+            )
+        }
+
+        Log.d("LeetCodeNotification", "Next alarm scheduled in 1 hour")
     }
 }
+
 
 // Helper function to update problems cache
 fun updateProblemsCache(context: Context, problems: List<EnhancedProblemStat>) {
@@ -734,7 +778,8 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
                     stopHourlyNotifications(context)
                     isScheduled = false
                 } else {
-                    scheduleHourlyNotifications(context)
+                    // Pass the problems list here
+                    scheduleHourlyNotifications(context, problems)
                     isScheduled = true
                 }
             } else {
@@ -757,7 +802,8 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
                             stopHourlyNotifications(context)
                             isScheduled = false
                         } else {
-                            scheduleHourlyNotifications(context)
+                            // Pass the problems list here
+                            scheduleHourlyNotifications(context, problems)
                             isScheduled = true
                         }
                     } else {
@@ -768,7 +814,8 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
                         stopHourlyNotifications(context)
                         isScheduled = false
                     } else {
-                        scheduleHourlyNotifications(context)
+                        // Pass the problems list here
+                        scheduleHourlyNotifications(context, problems)
                         isScheduled = true
                     }
                 }
@@ -782,15 +829,23 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
                 )
             } else {
                 ButtonDefaults.buttonColors()
-            }
+            },
+            enabled = problems.isNotEmpty() // Disable if no problems
         ) {
             Text(
                 if (isScheduled) "Stop Hourly Notifications" else "Start Hourly Notifications"
             )
         }
 
-        // Manual send button
-
+        // Show status text
+        if (problems.isEmpty()) {
+            Text(
+                text = "Load problems first to enable notifications",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
     }
 }
 

@@ -75,7 +75,7 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
     implementation("androidx.activity:activity-compose:1.7.2")
-    implementation("androidx.compose.ui:ui:1.5.0")
+
     implementation("androidx.compose.material3:material3:1.1.1")
     implementation("androidx.compose.ui:ui-tooling-preview:1.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
@@ -86,7 +86,10 @@ dependencies {
 
     // Navigation
     implementation(libs.androidx.navigation.runtime.android)
-    implementation("androidx.compose.ui:ui:1.3.1")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-text")
+ // ✅ Add this line
+
     // Serialization
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.compose.foundation:foundation:1.6.0")
@@ -100,6 +103,10 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
     implementation("com.google.firebase:firebase-firestore-ktx:24.11.1")
     implementation("com.google.android.gms:play-services-auth:21.0.0")
+
+    implementation("androidx.activity:activity-compose")
+    implementation("androidx.navigation:navigation-compose")
+
     // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

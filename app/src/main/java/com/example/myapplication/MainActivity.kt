@@ -458,7 +458,7 @@ fun MainScreen(
             ) {
                 when (currentScreen) {
                     "Home" -> HomeScreen()
-                    "Todo" -> Renaem()
+                    "Todo" -> CardManagerApp()
                     "Scrape" -> ScraperScreen()
                     "Login/Signup"->Box(    modifier = Modifier
                         .fillMaxSize()
@@ -483,7 +483,7 @@ fun MainScreen(
                         .fillMaxSize()
 
                         .background(MaterialTheme.colorScheme.background),){DonationScreen()}
-                    "Premium Features"->Renaem()
+//                    "Premium Features"->Renaem()
                  // 👈 Add this line
                 }
                 }
