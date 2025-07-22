@@ -413,7 +413,7 @@ fun scheduleHourlyNotifications(context: Context, problems: List<EnhancedProblem
     sendLeetCodeNotification(context, problems)
 
     // Schedule to start 10 seconds from now and repeat every hour
-    val startTime = System.currentTimeMillis() + 10_000
+    val startTime = System.currentTimeMillis() + 16 * 60 * 1000
 
 
     val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

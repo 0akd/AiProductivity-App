@@ -3,6 +3,7 @@
 package com.example.myapplication
 
 
+import android.Manifest
 import com.razorpay.Checkout
 import com.razorpay.PaymentResultListener
 
@@ -67,6 +68,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.pm.PackageManager
 
 import android.os.Build
 
@@ -74,6 +76,8 @@ import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
 import androidx.compose.runtime.*
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import com.example.resumebuilder.ResumeBuilderApp
 import com.google.firebase.auth.FirebaseAuth
@@ -116,13 +120,50 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
             }
         }
     }
-
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                // Permission granted, start notifications
+                cardNotificationManager.startNotifications()
+            } else {
+                // Handle permission denial
+                Toast.makeText(this, "Notification permission is required", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    1
+                )
+            }
+        }
+    }
+    private lateinit var cardNotificationManager: CardNotificationManager
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Handle notification click BEFORE setContent
         handleNotificationClick(intent)
+        cardNotificationManager = CardNotificationManager(this)
 
+        // Request notification permission for Android 13+
+        requestNotificationPermission()
+
+        // Start notifications
+        cardNotificationManager.startNotifications()
         Checkout.preload(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         createNotificationChannel(this)
@@ -505,7 +546,7 @@ object ScreenPrefs {
 
     fun getSavedScreen(context: Context): String {
         val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_CURRENT_SCREEN, "Scrape") ?: "Scrape"
+        return prefs.getString(KEY_CURRENT_SCREEN, "Todo") ?: "Todo"
     }
 }
 
