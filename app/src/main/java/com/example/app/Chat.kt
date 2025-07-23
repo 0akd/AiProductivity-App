@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.arjundubey.app
 import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
@@ -13,9 +13,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import retrofit2.*
 import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Body
-import retrofit2.http.Headers
-import retrofit2.http.POST
 
 // --------------------- Data Models ---------------------
 

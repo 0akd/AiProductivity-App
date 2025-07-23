@@ -1,10 +1,8 @@
 // Fixed missing parameter 'onClick' in WebsiteCard call
-package com.example.myapplication
+package com.arjundubey.app
 
 import android.annotation.SuppressLint
-import android.graphics.Bitmap
 import android.os.Build
-import android.os.Message
 import android.webkit.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable

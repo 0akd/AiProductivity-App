@@ -1,12 +1,10 @@
-package com.example.myapplication
+package com.arjundubey.app
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -49,8 +47,8 @@ fun HomeScreen() {
 
             // Paragraph 2
             Text(
-                text = "In todo app, if you LONG PRESS on your todo it adds it to the Focus tab "
-                        + "which can be accessed from the bottom bar. Focus tab reminds you to stick to that particular task.",
+                text = "In todo app, If your turn on notifications it will repeat randomly "
+                        + "this helps your to always keep getting reminded of what you have to do",
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
@@ -61,7 +59,7 @@ fun HomeScreen() {
 
             // Paragraph 3
             Text(
-                text = "A Digital Product - delivered by Dubey Industries",
+                text = "A Digital Product - delivered by Arjun Dubey",
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,

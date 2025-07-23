@@ -1,6 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
-    package="com.example.myapplication">
+    package="com.arjundubey.app">
 
 
 <!-- Permissions -->
@@ -26,7 +26,7 @@
 
         <!-- Main Launcher Activity -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.arjundubey.app.MainActivity"
             android:icon="@mipmap/ic_launcher"
             android:roundIcon="@mipmap/ic_launcher_round"
             android:exported="true"
@@ -40,7 +40,7 @@
 
         <!-- Fullscreen WebView Activity -->
         <activity
-            android:name=".FullscreenWebViewActivity"
+            android:name="com.arjundubey.app.FullscreenWebViewActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:hardwareAccelerated="true"
@@ -48,7 +48,7 @@
         <receiver android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy"
             android:enabled="false"
             tools:ignore="DisabledAttribute" />
-        <receiver android:name=".LeetCodeNotificationReceiver"
+        <receiver android:name="com.arjundubey.app.LeetCodeNotificationReceiver"
             android:enabled="true"
             android:exported="false"
    />

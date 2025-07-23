@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3Api::class)
 
-package com.example.myapplication
+package com.arjundubey.app
 
 
 import android.Manifest
@@ -12,15 +12,12 @@ import androidx.compose.material.icons.filled.DarkMode
 
 import android.app.Activity
 import android.widget.Toast
-import okhttp3.*
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Response
 import java.io.IOException
 import org.json.JSONObject
@@ -29,7 +26,6 @@ import android.content.Intent
 import android.net.Uri
 import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Icon
@@ -39,9 +35,7 @@ import android.content.SharedPreferences
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.CircleShape
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -61,7 +55,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import com.example.myapplication.ui.theme.MyApplicationTheme
+import com.arjundubey.app.ui.theme.MyApplicationTheme
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -72,16 +66,13 @@ import android.content.pm.PackageManager
 
 import android.os.Build
 
-import androidx.activity.compose.setContent
-import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.background
-import androidx.compose.runtime.*
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import com.example.resumebuilder.ResumeBuilderApp
+import com.arjundubey.resumebuilder.ResumeBuilderApp
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.FirebaseApp
+
 data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
 
 val LocalThemeToggle = compositionLocalOf {
@@ -353,7 +344,7 @@ fun MainScreen(
 
 
 
-    var currentScreen by remember { mutableStateOf("Todo") } // default
+    var currentScreen by remember { mutableStateOf("Tasks") } // default
     LaunchedEffect(notificationProblemSlug) {
         if (notificationProblemSlug != null) {
             currentScreen = "Leet"
@@ -364,7 +355,16 @@ fun MainScreen(
         currentScreen = ScreenPrefs.getSavedScreen(context)
     }
 
+    val auth = remember { FirebaseAuth.getInstance() }
+    var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
 
+    // Listen for auth state changes
+    LaunchedEffect(Unit) {
+        val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            isLoggedIn = firebaseAuth.currentUser != null
+        }
+        auth.addAuthStateListener(authStateListener)
+    }
     fun changeScreen(screen: String) {
         currentScreen = screen
         ScreenPrefs.saveScreen(context, screen)
@@ -423,9 +423,9 @@ fun MainScreen(
 
 
                     val screens = if (isPremium) {
-                        listOf("Home", "Todo", "Scrape", "Premium Features", "Donate")
+                        listOf("Home", "Tasks","Login/Signup")// "Scrape", "Premium Features", "Donate"
                     } else {
-                        listOf("Home", "Todo",  "Scrape","Donate","Login/Signup","Leet" )//"Buy Premium"
+                        listOf( "Home","Tasks","Login/Signup"  )//"Buy Premium""Scrape","Donate","Leet"
                     }
 
                     screens.forEach { screen ->
@@ -441,11 +441,11 @@ fun MainScreen(
             // Floating Menu Icon
             val screenTitles = mapOf(
                 "Home" to "Home",
-                "Todo" to "Tasks",
-                "Donate" to "Support Us",
-                "Scrape" to "Hackathon Scraper",
-                "Buy Premium" to "Upgrade",
-                "Premium Features" to "Premium Tools",
+                "Tasks" to "Tasks",
+//                "Donate" to "Support Us",
+//                "Scrape" to "Hackathon Scraper",
+//                "Buy Premium" to "Upgrade",
+//                "Premium Features" to "Premium Tools",
                 "Login/Signup" to "Login/Signup"
             )
             TopAppBar(
@@ -499,34 +499,38 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
-                    "Home" -> ResumeBuilderApp()
-                    "Todo" -> CardListManager()
-                    "Scrape" -> ScraperScreen()
+                    "Home" -> HomeScreen()
+                    "Tasks" -> CardListManager()
+//                    "Scrape" -> ScraperScreen()
                     "Login/Signup"->Box(    modifier = Modifier
                         .fillMaxSize()
 
-                        .background(MaterialTheme.colorScheme.background),){AuthScreen()}
-                    "Full" -> Hack()
-                    "Leet" -> LeetCodeScreen(
-                        notificationProblemSlug = notificationProblemSlug,
-                        onNotificationHandled = onNotificationHandled
-                    )
-                    "Buy Premium" -> PremiumScreen {
-                        // You can do any of these:
-                        // - Show a toast
-                        // - Update a state
-                        // - Navigate to another screen
-                        // - Log analytics event
-
-                        Toast.makeText(context, "Welcome to Premium!", Toast.LENGTH_SHORT).show()
-                        currentScreen = "Home" // Optional: auto-redirect to Home
-                    }
-                    "Donate" -> Box(    modifier = Modifier
-                        .fillMaxSize()
-
-                        .background(MaterialTheme.colorScheme.background),){DonationScreen()}
-//                    "Premium Features"->Renaem()
-                 // 👈 Add this line
+                        .background(MaterialTheme.colorScheme.background),){  AuthScreen(
+                        onLoginSuccess = {
+                            isLoggedIn = true
+                        }
+                    )}
+//                    "Full" -> Hack()
+//                    "Leet" -> LeetCodeScreen(
+//                        notificationProblemSlug = notificationProblemSlug,
+//                        onNotificationHandled = onNotificationHandled
+//                    )
+//                    "Buy Premium" -> PremiumScreen {
+//                        // You can do any of these:
+//                        // - Show a toast
+//                        // - Update a state
+//                        // - Navigate to another screen
+//                        // - Log analytics event
+//
+//                        Toast.makeText(context, "Welcome to Premium!", Toast.LENGTH_SHORT).show()
+//                        currentScreen = "Home" // Optional: auto-redirect to Home
+//                    }
+//                    "Donate" -> Box(    modifier = Modifier
+//                        .fillMaxSize()
+//
+//                        .background(MaterialTheme.colorScheme.background),){DonationScreen()}
+////                    "Premium Features"->Renaem()
+//                 // 👈 Add this line
                 }
                 }
             }
@@ -546,7 +550,7 @@ object ScreenPrefs {
 
     fun getSavedScreen(context: Context): String {
         val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_CURRENT_SCREEN, "Todo") ?: "Todo"
+        return prefs.getString(KEY_CURRENT_SCREEN, "Tasks") ?: "Tasks"
     }
 }
 
@@ -567,7 +571,7 @@ fun DrawerButton(text: String, onClick: () -> Unit) {
 fun getEmojiForScreen(screen: String): String {
     return when (screen) {
         "Home" -> "🏠"
-        "Todo" -> "📝"
+        "Tasks" -> "📝"
         "Settings" -> "⚙️"
         "Portfolio" -> "ℹ️"
         "Full" -> "🌐"

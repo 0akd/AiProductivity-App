@@ -1,10 +1,9 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
-package com.example.myapplication
+package com.arjundubey.app
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
-import android.webkit.WebViewClient
-
+import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
 import android.content.Context
@@ -17,7 +16,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -29,7 +27,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -46,7 +43,6 @@ import com.google.firebase.firestore.ktx.firestore
 import com.google.firebase.ktx.Firebase
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlin.math.abs
@@ -63,21 +59,84 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Person
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.*
+
+import java.util.UUID
 import java.util.concurrent.TimeUnit
-import kotlin.random.Random
+
 data class CardItem(
-    val id: String = java.util.UUID.randomUUID().toString(),
+    val id: String = UUID.randomUUID().toString(),
     val name: String,
     val description: String,
     val value: Int = 0,
     val priority: Int,
-    val youtubeUrl: String = ""
+    val youtubeUrl: String = "",
+    val userEmail: String = "" // New field for user email
 ) {
     // Empty constructor for Firestore
-    constructor() : this("", "", "", 0,0,"")
+    constructor() : this("", "", "", 0, 0, "", "")
+}
+
+
+object UserAuthHelper {
+
+    /**
+     * Get the current authenticated user's email
+     * @return User email if authenticated, null otherwise
+     */
+    fun getCurrentUserEmail(): String? {
+        return try {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            currentUser?.email
+        } catch (e: Exception) {
+            println("Error getting current user email: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Get the current authenticated user's UID
+     * @return User UID if authenticated, null otherwise
+     */
+    fun getCurrentUserId(): String? {
+        return try {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            currentUser?.uid
+        } catch (e: Exception) {
+            println("Error getting current user ID: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Check if user is currently authenticated
+     * @return true if user is signed in, false otherwise
+     */
+    fun isUserAuthenticated(): Boolean {
+        return try {
+            FirebaseAuth.getInstance().currentUser != null
+        } catch (e: Exception) {
+            println("Error checking authentication status: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Get current user display name
+     * @return User display name if available, null otherwise
+     */
+    fun getCurrentUserDisplayName(): String? {
+        return try {
+            val currentUser = FirebaseAuth.getInstance().currentUser
+            currentUser?.displayName
+        } catch (e: Exception) {
+            println("Error getting current user display name: ${e.message}")
+            null
+        }
+    }
 }
 fun extractYouTubeVideoId(url: String): String? {
     val patterns = listOf(
@@ -94,7 +153,6 @@ fun extractYouTubeVideoId(url: String): String? {
     }
     return null
 }
-
 fun getYouTubeEmbedUrl(videoId: String): String {
     return "https://www.youtube.com/embed/$videoId"
 }
@@ -319,57 +377,101 @@ class CardRepository(private val context: Context) {
     private val gson = Gson()
     private val collectionName = "cards"
 
-    // Create a new card
+    // Get current user email from Firebase Auth
+    private fun getCurrentUserEmail(): String? {
+        return FirebaseAuth.getInstance()?.currentUser?.email
+    }
+
+    // Create a new card with user email
     suspend fun createCard(card: CardItem): Boolean {
+        val userEmail = getCurrentUserEmail() ?: return false
+        val cardWithUser = card.copy(userEmail = userEmail)
+
         return try {
             // Save to Firestore
             firestore.collection(collectionName)
-                .document(card.id)
-                .set(card)
+                .document(cardWithUser.id)
+                .set(cardWithUser)
                 .await()
 
             // Update local backup
             val currentCards = loadFromSharedPrefs().toMutableList()
-            currentCards.add(card)
+            currentCards.add(cardWithUser)
             saveToSharedPrefs(currentCards)
 
             true
         } catch (e: Exception) {
+            println("Error creating card: ${e.message}")
             e.printStackTrace()
             false
         }
     }
 
-    // Read all cards
+    // Read cards only for current user
     suspend fun loadCards(): List<CardItem> {
+        val userEmail = getCurrentUserEmail()
+
+        if (userEmail == null) {
+            println("No user email found - user not authenticated")
+            return emptyList()
+        }
+
+        println("Loading cards for user: $userEmail")
+
         return try {
-            // Try to load from Firestore first
+            // Try to load from Firestore first - filter by user email
             val snapshot = firestore.collection(collectionName)
-                .orderBy("priority")
+                .whereEqualTo("userEmail", userEmail)
                 .get()
                 .await()
 
+            println("Firestore query completed. Documents found: ${snapshot.documents.size}")
+
             val firestoreCards = snapshot.documents.mapNotNull { doc ->
-                doc.toObject(CardItem::class.java)?.copy(id = doc.id)
-            }
+                try {
+                    val cardData = doc.data
+                    println("Document ${doc.id} data: $cardData")
+
+                    doc.toObject(CardItem::class.java)?.copy(id = doc.id)
+                } catch (e: Exception) {
+                    println("Error converting document ${doc.id}: ${e.message}")
+                    null
+                }
+            }.sortedBy { it.priority }
+
+            println("Successfully converted ${firestoreCards.size} cards from Firestore")
 
             if (firestoreCards.isNotEmpty()) {
                 // Save to SharedPreferences as backup
                 saveToSharedPrefs(firestoreCards)
                 firestoreCards
             } else {
+                println("No cards found in Firestore, checking SharedPreferences")
                 // Fallback to SharedPreferences
-                loadFromSharedPrefs()
+                val localCards = loadFromSharedPrefs().filter { it.userEmail == userEmail }
+                println("Found ${localCards.size} cards in SharedPreferences")
+                localCards
             }
         } catch (e: Exception) {
+            println("Error loading cards from Firestore: ${e.message}")
             e.printStackTrace()
             // Fallback to SharedPreferences
-            loadFromSharedPrefs()
+            val localCards = loadFromSharedPrefs().filter { it.userEmail == userEmail }
+            println("Fallback: Found ${localCards.size} cards in SharedPreferences")
+            localCards
         }
     }
 
-    // Update an existing card
+    // Update an existing card (ensure user owns the card)
     suspend fun updateCard(card: CardItem): Boolean {
+        val userEmail = getCurrentUserEmail() ?: return false
+
+        // Ensure the card belongs to current user
+        if (card.userEmail != userEmail) {
+            println("Card doesn't belong to current user")
+            return false
+        }
+
         return try {
             firestore.collection(collectionName)
                 .document(card.id)
@@ -386,14 +488,30 @@ class CardRepository(private val context: Context) {
 
             true
         } catch (e: Exception) {
+            println("Error updating card: ${e.message}")
             e.printStackTrace()
             false
         }
     }
 
-    // Delete a card
+    // Delete a card (ensure user owns the card)
     suspend fun deleteCard(cardId: String): Boolean {
+        val userEmail = getCurrentUserEmail() ?: return false
+
         return try {
+            // First verify the card belongs to current user
+            val cardDoc = firestore.collection(collectionName)
+                .document(cardId)
+                .get()
+                .await()
+
+            val card = cardDoc.toObject(CardItem::class.java)
+            if (card?.userEmail != userEmail) {
+                println("Card doesn't belong to current user or doesn't exist")
+                return false
+            }
+
+            // Delete from Firestore
             firestore.collection(collectionName)
                 .document(cardId)
                 .delete()
@@ -406,18 +524,24 @@ class CardRepository(private val context: Context) {
 
             true
         } catch (e: Exception) {
+            println("Error deleting card: ${e.message}")
             e.printStackTrace()
             false
         }
     }
 
-    // Bulk update cards (for saving all cards at once)
+    // Bulk update cards (for saving all cards at once) - only user's cards
     suspend fun saveCards(cards: List<CardItem>): Boolean {
+        val userEmail = getCurrentUserEmail() ?: return false
+
+        // Filter cards to ensure all belong to current user
+        val userCards = cards.filter { it.userEmail == userEmail }
+
         return try {
             val batch = firestore.batch()
 
             // Update each card in the batch
-            cards.forEach { card ->
+            userCards.forEach { card ->
                 val cardRef = firestore.collection(collectionName).document(card.id)
                 batch.set(cardRef, card)
             }
@@ -425,22 +549,24 @@ class CardRepository(private val context: Context) {
             batch.commit().await()
 
             // Save to SharedPreferences as backup
-            saveToSharedPrefs(cards)
+            saveToSharedPrefs(userCards)
 
             true
         } catch (e: Exception) {
+            println("Error saving cards: ${e.message}")
             e.printStackTrace()
             false
         }
     }
 
-    // Reset all card values to 0
+    // Reset all card values to 0 - only for current user
     suspend fun resetAllCardValues(): Boolean {
         return try {
-            val cards = loadCards()
+            val cards = loadCards() // This already filters by user
             val resetCards = cards.map { it.copy(value = 0) }
             saveCards(resetCards)
         } catch (e: Exception) {
+            println("Error resetting card values: ${e.message}")
             e.printStackTrace()
             false
         }
@@ -448,17 +574,24 @@ class CardRepository(private val context: Context) {
 
     // Private helper methods
     private fun saveToSharedPrefs(cards: List<CardItem>) {
+        val userEmail = getCurrentUserEmail() ?: return
+
+        // Store cards with user-specific key
         val json = gson.toJson(cards)
-        sharedPrefs.edit().putString("cards", json).apply()
+        sharedPrefs.edit().putString("cards_$userEmail", json).apply()
+        println("Saved ${cards.size} cards to SharedPreferences for user: $userEmail")
     }
 
     fun loadFromSharedPrefs(): List<CardItem> {
-        val json = sharedPrefs.getString("cards", null)
+        val userEmail = getCurrentUserEmail() ?: return emptyList()
+
+        val json = sharedPrefs.getString("cards_$userEmail", null)
         return if (json != null) {
             val type = object : TypeToken<List<CardItem>>() {}.type
             try {
                 gson.fromJson(json, type) ?: emptyList()
             } catch (e: Exception) {
+                println("Error loading from SharedPreferences: ${e.message}")
                 e.printStackTrace()
                 emptyList()
             }
@@ -467,31 +600,41 @@ class CardRepository(private val context: Context) {
         }
     }
 
-    // Sync local data with Firestore (useful for offline-online sync)
+    // Sync local data with Firestore (useful for offline-online sync) - only user's cards
     suspend fun syncWithFirestore(): List<CardItem> {
+        val userEmail = getCurrentUserEmail() ?: return emptyList()
+
         return try {
             val firestoreCards = firestore.collection(collectionName)
-                .orderBy("priority")
+                .whereEqualTo("userEmail", userEmail)
                 .get()
                 .await()
                 .documents
                 .mapNotNull { doc ->
                     doc.toObject(CardItem::class.java)?.copy(id = doc.id)
                 }
+                .sortedBy { it.priority }
 
             saveToSharedPrefs(firestoreCards)
             firestoreCards
         } catch (e: Exception) {
+            println("Error syncing with Firestore: ${e.message}")
             e.printStackTrace()
             loadFromSharedPrefs()
         }
     }
+
     suspend fun updateCardPriorities(cards: List<CardItem>): Boolean {
+        val userEmail = getCurrentUserEmail() ?: return false
+
+        // Filter cards to ensure all belong to current user
+        val userCards = cards.filter { it.userEmail == userEmail }
+
         return try {
             val batch = firestore.batch()
 
-            // Update priorities for all cards
-            cards.forEachIndexed { index, card ->
+            // Update priorities for all user's cards
+            userCards.forEachIndexed { index, card ->
                 val updatedCard = card.copy(priority = index)
                 val cardRef = firestore.collection(collectionName).document(card.id)
                 batch.set(cardRef, updatedCard)
@@ -500,19 +643,131 @@ class CardRepository(private val context: Context) {
             batch.commit().await()
 
             // Save to SharedPreferences as backup
-            val cardsWithUpdatedPriorities = cards.mapIndexed { index, card ->
+            val cardsWithUpdatedPriorities = userCards.mapIndexed { index, card ->
                 card.copy(priority = index)
             }
             saveToSharedPrefs(cardsWithUpdatedPriorities)
 
             true
         } catch (e: Exception) {
+            println("Error updating card priorities: ${e.message}")
             e.printStackTrace()
             false
         }
     }
-}
 
+    // Clear user data on logout
+    fun clearUserData() {
+        val userEmail = getCurrentUserEmail() ?: return
+        sharedPrefs.edit().remove("cards_$userEmail").apply()
+    }
+}
+// Add this import at the top of your file if not already present
+// import androidx.compose.runtime.DisposableEffect
+
+// Add this import at the top of your file if not already present
+// import androidx.compose.runtime.DisposableEffect
+
+@Composable
+fun LoginPromptScreen(
+    onLoginSuccess: (String) -> Unit,
+    onLoginRequired: () -> Unit
+) {
+    val auth = remember { FirebaseAuth.getInstance() }
+    var showAuthScreen by remember { mutableStateOf(false) }
+    var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+
+    // Listen for Firebase auth state changes
+    DisposableEffect(Unit) {
+        val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
+            val currentUser = firebaseAuth.currentUser
+            if (currentUser != null) {
+                isLoggedIn = true
+                onLoginSuccess(currentUser.uid)
+            } else {
+                isLoggedIn = false
+            }
+        }
+
+        auth.addAuthStateListener(authStateListener)
+
+        // Cleanup listener when composable is disposed
+        onDispose {
+            auth.removeAuthStateListener(authStateListener)
+        }
+    }
+
+    // Only show UI if user is not logged in
+    if (!isLoggedIn && auth.currentUser == null) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background),
+            contentAlignment = Alignment.Center
+        ) {
+            when {
+                showAuthScreen -> {
+                    // Check your AuthScreen's actual callback signature and use one of these:
+
+                    // Option 1: If AuthScreen expects () -> Unit
+                    AuthScreen(
+                        onLoginSuccess = {
+                            showAuthScreen = false
+                        }
+                    )
+
+                    // Option 2: If AuthScreen expects (String) -> Unit
+                    // AuthScreen(
+                    //     onLoginSuccess = { userId ->
+                    //         showAuthScreen = false
+                    //     }
+                    // )
+                }
+
+                else -> {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Login",
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = "Please sign in to continue",
+                            fontSize = 18.sp,
+                            color = MaterialTheme.colorScheme.onBackground,
+                            textAlign = TextAlign.Center
+                        )
+                        Text(
+                            text = "Your cards are linked to your account",
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(modifier = Modifier.height(32.dp))
+                        Button(
+                            onClick = {
+                                showAuthScreen = true
+                            },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary
+                            )
+                        ) {
+                            Text(
+                                text = "Sign In",
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 @Composable
 fun CardListManager() {
     val context = LocalContext.current
@@ -530,21 +785,45 @@ fun CardListManager() {
     var isOperationInProgress by remember { mutableStateOf(false) }
     var draggedCard by remember { mutableStateOf<CardItem?>(null) }
     var draggedOverIndex by remember { mutableIntStateOf(-1) }
-    // Load cards on startup
-    LaunchedEffect(Unit) {
-        scope.launch {
-            cards = repository.loadCards()
-            isLoading = false
-        }
-    }
     var isNotificationEnabled by remember { mutableStateOf(false) }
+    var currentUserEmail by remember { mutableStateOf<String?>(null) }
+    var showLoginPrompt by remember { mutableStateOf(false) }
+
+    // Check user authentication on startup
     LaunchedEffect(Unit) {
-        isNotificationEnabled = notificationManager.isNotificationScheduled()
-        scope.launch {
-            cards = repository.loadCards().sortedBy { it.priority }
+        currentUserEmail = UserAuthHelper.getCurrentUserEmail()
+
+        if (currentUserEmail == null) {
+            showLoginPrompt = true
             isLoading = false
+        } else {
+            // Load cards and notifications after confirming user is authenticated
+            try {
+                isNotificationEnabled = notificationManager.isNotificationScheduled()
+                cards = repository.loadCards().sortedBy { it.priority }
+            } catch (e: Exception) {
+                println("Failed to load user data: ${e.message}")
+            } finally {
+                isLoading = false
+            }
         }
     }
+
+    // Load data when user email changes (after login)
+    LaunchedEffect(currentUserEmail) {
+        if (currentUserEmail != null && !showLoginPrompt) {
+            try {
+                isLoading = true
+                isNotificationEnabled = notificationManager.isNotificationScheduled()
+                cards = repository.loadCards().sortedBy { it.priority }
+            } catch (e: Exception) {
+                println("Failed to load user data after login: ${e.message}")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
     // Auto-save function for value changes
     fun saveCardValue(updatedCard: CardItem) {
         if (!isOperationInProgress) {
@@ -559,13 +838,30 @@ fun CardListManager() {
             }
         }
     }
+
     // Save cards whenever the list changes (but don't save on initial load)
     LaunchedEffect(cards) {
-        if (!isLoading && cards.isNotEmpty()) {
+        if (!isLoading && cards.isNotEmpty() && currentUserEmail != null) {
             scope.launch {
                 repository.saveCards(cards)
             }
         }
+    }
+
+    if (showLoginPrompt) {
+        LoginPromptScreen(
+            onLoginSuccess = { email ->
+                currentUserEmail = email
+                showLoginPrompt = false
+                // Don't manually set isLoading here - let LaunchedEffect handle it
+            },
+            onLoginRequired = {
+                // Handle login required - navigate to login screen
+                // This depends on your navigation setup
+                println("User needs to login")
+            }
+        )
+        return
     }
 
     if (isLoading) {
@@ -573,12 +869,29 @@ fun CardListManager() {
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            CircularProgressIndicator(color = Color(0xFF6200EE))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(color = Color(0xFF6200EE))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Loading your cards...",
+                    color = Color.Gray
+                )
+                currentUserEmail?.let { email ->
+                    Text(
+                        text = "Signed in as: $email",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
         }
         return
     }
+
     fun reorderCards(fromIndex: Int, toIndex: Int) {
-        if (fromIndex == toIndex) return
+        if (fromIndex == toIndex || currentUserEmail == null) return
 
         scope.launch {
             val reorderedCards = cards.toMutableList()
@@ -685,10 +998,6 @@ fun CardListManager() {
             }
         }
 
-
-
-
-
         // Fixed positioned buttons at bottom right
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -754,8 +1063,6 @@ fun CardListManager() {
         }
     }
 
-    // Dialogs remain the same...
-
     // Reset Confirmation Dialog
     if (showConfirmDialog) {
         AlertDialog(
@@ -812,7 +1119,6 @@ fun CardListManager() {
             }
         )
     }
-
 
     // Card Detail Dialog
     if (showDetailDialog && selectedCard != null) {
@@ -1016,7 +1322,7 @@ fun DraggableSwipeableCard(
                     text = card.name,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    color = Color.Black,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -1040,7 +1346,7 @@ fun DraggableSwipeableCard(
                             text = previewValue.toString(),
                             fontSize = 30.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (previewValue > 2) Color.White else Color.Black
+                            color = Color.Black,
                         )
                     }
 
@@ -1388,7 +1694,7 @@ fun CardDetailDialog(
                             text = card.name,
                             fontSize = 24.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (card.value > 2) Color.White else Color.Black,
+                            color = if (card.value > 2) Color.Black else Color.Black,
                             modifier = Modifier.weight(1f)
                         )
 
@@ -1396,7 +1702,7 @@ fun CardDetailDialog(
                             modifier = Modifier
                                 .size(50.dp)
                                 .background(
-                                    if (card.value > 2) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.1f),
+                                    if (card.value > 2) Color.Black.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.1f),
                                     CircleShape
                                 ),
                             contentAlignment = Alignment.Center
@@ -1405,7 +1711,7 @@ fun CardDetailDialog(
                                 text = card.value.toString(),
                                 fontSize = 20.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (card.value > 2) Color.White else Color.Black
+                                color = if (card.value > 2) Color.Black else Color.Black
                             )
                         }
                     }
@@ -1417,13 +1723,13 @@ fun CardDetailDialog(
                             text = "Description:",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (card.value > 2) Color.White else Color.Black
+                            color = if (card.value > 2) Color.Black else Color.Black
                         )
 
                         Text(
                             text = card.description,
                             fontSize = 14.sp,
-                            color = if (card.value > 2) Color.White.copy(alpha = 0.9f) else Color.Gray,
+                            color = if (card.value > 2) Color.Black.copy(alpha = 0.9f) else Color.Gray,
                             textAlign = TextAlign.Justify
                         )
                     }
@@ -1436,7 +1742,7 @@ fun CardDetailDialog(
                             text = "Related Video:",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = if (card.value > 2) Color.White else Color.Black
+                            color = if (card.value > 2) Color.Black else Color.Black
                         )
                         val context = LocalContext.current
                         Card(
@@ -1496,7 +1802,7 @@ fun CardDetailDialog(
                             else -> "💡 Swipe left/right to change value (0-5)"
                         },
                         fontSize = 12.sp,
-                        color = if (card.value > 2) Color.White.copy(alpha = 0.7f) else Color.Gray,
+                        color = if (card.value > 2) Color.Black.copy(alpha = 0.7f) else Color.Gray,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -1507,8 +1813,8 @@ fun CardDetailDialog(
                         onClick = onDismiss,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (card.value > 2) Color.White else Color(0xFF6200EE),
-                            contentColor = if (card.value > 2) Color.Black else Color.White
+                            containerColor = if (card.value > 2) Color.Black else Color(0xFF6200EE),
+                            contentColor = if (card.value > 2) Color.Black else Color.Black
                         )
                     ) {
                         Text("Close")

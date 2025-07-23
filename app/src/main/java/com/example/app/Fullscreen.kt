@@ -1,5 +1,5 @@
 // FullscreenWebViewActivity.kt
-package com.example.myapplication
+package com.arjundubey.app
 
 import android.annotation.SuppressLint
 import android.os.Bundle

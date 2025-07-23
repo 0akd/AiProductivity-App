@@ -1,4 +1,4 @@
-package com.example.myapplication
+package com.arjundubey.app
 import android.webkit.CookieManager
 import android.webkit.WebSettings
 import android.webkit.WebView

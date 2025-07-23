@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:101881111630:android:eba8f7bec4c87f2076cf1f",
+        "mobilesdk_app_id": "1:101881111630:android:de8f2d8885b33db576cf1f",
         "android_client_info": {
-          "package_name": "com.example.myapplication"
+          "package_name": "com.arjundubey.app"
         }
       },
       "oauth_client": [
