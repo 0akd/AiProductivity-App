@@ -888,7 +888,7 @@ fun CardListManager() {
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(50.dp)
                 ) {
                     items(
                         count = cards.size,
