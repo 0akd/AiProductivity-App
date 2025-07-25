@@ -69,6 +69,8 @@ import kotlinx.serialization.json.Json
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import androidx.work.*
+import java.util.concurrent.TimeUnit
 
 object QuestionArrays {
     val array1 = listOf(
@@ -323,7 +325,7 @@ private const val PREFS_NAME = "LeetCodePrefs"
 private const val KEY_SAVED_PROBLEMS = "SavedProblems"
 private const val KEY_CACHED_PROBLEMS = "CachedProblems"
 private const val KEY_CHECKED_PROBLEMS = "CheckedProblems"
-private const val NOTIFICATION_REQUEST_CODE = 1001
+
 
 // Data classes (add these if they don't exist)
 
@@ -393,82 +395,160 @@ fun getCachedProblems(context: Context): List<EnhancedProblemStat> {
 }
 
 // Notification scheduling functions
+class LeetCodeNotificationWorker(
+    context: Context,
+    params: WorkerParameters
+) : Worker(context, params) {
+
+    override fun doWork(): Result {
+        return try {
+            // Get cached problems and send notification
+            val cachedProblems = getCachedProblems(applicationContext)
+            if (cachedProblems.isNotEmpty()) {
+                sendLeetCodeNotification(applicationContext, cachedProblems)
+            } else {
+                // Send reminder to open app if no cached problems
+                sendReminderNotification(applicationContext)
+            }
+            Result.success()
+        } catch (e: Exception) {
+            Log.e("LeetCodeWorker", "Error sending notification", e)
+            Result.retry()
+        }
+    }
+}
+// Add this BootReceiver class to your code
+// Add this BootReceiver class
+class LeetCodeBootReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_BOOT_COMPLETED ||
+            intent.action == Intent.ACTION_MY_PACKAGE_REPLACED ||
+            intent.action == Intent.ACTION_PACKAGE_REPLACED) {
+
+            Log.d("LeetCodeBootReceiver", "Device booted or app updated. Checking notification schedule...")
+
+            // Check if notifications were previously scheduled
+            val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
+            val wasScheduled = prefs.getBoolean("notifications_scheduled", false)
+
+            if (wasScheduled) {
+                // Get cached problems
+                val cachedProblems = getCachedProblems(context)
+
+                if (cachedProblems.isNotEmpty()) {
+                    // Reschedule periodic notifications using WorkManager
+                    scheduleHourlyNotifications(context, cachedProblems)
+                    Log.d("LeetCodeBootReceiver", "LeetCode notifications restarted after boot with ${cachedProblems.size} problems")
+                } else {
+                    // Set a flag to reschedule when app is next opened and problems are loaded
+                    prefs.edit().putBoolean("needs_reschedule_after_boot", true).apply()
+                    Log.d("LeetCodeBootReceiver", "No cached problems found. Will reschedule when app is opened.")
+                }
+            } else {
+                Log.d("LeetCodeBootReceiver", "Notifications were not previously scheduled. No action needed.")
+            }
+
+            // Also restart the CardNotificationManager if it was active
+            val cardNotificationManager = CardNotificationManager(context)
+            cardNotificationManager.startNotifications()
+            Log.d("LeetCodeBootReceiver", "Card notifications also restarted")
+        }
+    }
+}
+
+// Constants for request codes
+const val NOTIFICATION_REQUEST_CODE = 1001
+const val LEETCODE_NOTIFICATION_REQUEST_CODE = 1002
+
+// Update your existing scheduleHourlyNotifications function to handle the boot flag
 fun scheduleHourlyNotifications(context: Context, problems: List<EnhancedProblemStat>) {
     // Cache problems FIRST - this is crucial
     cacheProblemsForNotifications(context, problems)
 
+    // Send immediate notification with the cached problems (only if not from boot)
+    val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
+    val isFromBoot = prefs.getBoolean("needs_reschedule_after_boot", false)
 
-    val intent = Intent(context, LeetCodeNotificationReceiver::class.java).apply {
-        action = "com.example.myapplication"
+    if (!isFromBoot) {
+        sendLeetCodeNotification(context, problems)
     }
 
-    val pendingIntent = PendingIntent.getBroadcast(
-        context,
-        NOTIFICATION_REQUEST_CODE,
-        intent,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    // Create constraints for the work
+    val constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.NOT_REQUIRED)
+        .setRequiresBatteryNotLow(false)
+        .build()
+
+    // Create the periodic work request (minimum interval is 15 minutes)
+    val notificationWorkRequest = PeriodicWorkRequestBuilder<LeetCodeNotificationWorker>(
+        15, TimeUnit.MINUTES
+    )
+        .setConstraints(constraints)
+        .setInitialDelay(15, TimeUnit.MINUTES) // First notification after 15 minutes
+        .addTag("leetcode_notifications")
+        .build()
+
+    // Enqueue the work
+    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        "leetcode_periodic_notifications",
+        ExistingPeriodicWorkPolicy.REPLACE,
+        notificationWorkRequest
     )
 
-    // Send immediate notification with the cached problems
-    sendLeetCodeNotification(context, problems)
+    // Save scheduling state and clear boot flag
+    prefs.edit()
+        .putBoolean("notifications_scheduled", true)
+        .putBoolean("needs_reschedule_after_boot", false)
+        .apply()
 
-    // Schedule to start 10 seconds from now and repeat every hour
-    val startTime = System.currentTimeMillis() + 16 * 60 * 1000
-
-
-    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (alarmManager.canScheduleExactAlarms()) {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                startTime,
-                pendingIntent
-            )
-        } else {
-            Toast.makeText(context, "Exact alarm permission not granted. Please enable it in settings.", Toast.LENGTH_LONG).show()
-            // Optionally guide the user to settings:
-            val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-            context.startActivity(intent)
-        }
+    val message = if (isFromBoot) {
+        "Notifications rescheduled after boot/update!"
     } else {
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            startTime,
-            pendingIntent
-        )
+        "Periodic notifications scheduled! Next in 15 minutes."
     }
 
-
-    // Save scheduling state
-    val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
-    prefs.edit().putBoolean("notifications_scheduled", true).apply()
-
-    Toast.makeText(context, "Hourly notifications scheduled! First in 10 seconds.", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
 }
 
-fun stopHourlyNotifications(context: Context) {
-    val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-    val intent = Intent(context, LeetCodeNotificationReceiver::class.java)
-    val pendingIntent = PendingIntent.getBroadcast(
-        context,
-        NOTIFICATION_REQUEST_CODE,
-        intent,
-        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-    )
+// Add this helper function to check and handle boot rescheduling in your main activity
+fun handleBootRescheduling(context: Context, problems: List<EnhancedProblemStat>) {
+    val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
+    val needsReschedule = prefs.getBoolean("needs_reschedule_after_boot", false)
 
-    alarmManager.cancel(pendingIntent)
+    if (needsReschedule && problems.isNotEmpty()) {
+        scheduleHourlyNotifications(context, problems)
+        Log.d("LeetCodeApp", "Rescheduled notifications after boot with fresh problem data")
+    }
+}
+
+// 3. Replace the stopHourlyNotifications function
+fun stopHourlyNotifications(context: Context) {
+    // Cancel the periodic work
+    WorkManager.getInstance(context).cancelUniqueWork("leetcode_periodic_notifications")
+
+    // Also cancel by tag as a backup
+    WorkManager.getInstance(context).cancelAllWorkByTag("leetcode_notifications")
 
     // Save scheduling state
     val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
     prefs.edit().putBoolean("notifications_scheduled", false).apply()
 
-    Toast.makeText(context, "Hourly notifications stopped!", Toast.LENGTH_SHORT).show()
+    Toast.makeText(context, "Periodic notifications stopped!", Toast.LENGTH_SHORT).show()
 }
+
+
 
 fun isNotificationScheduled(context: Context): Boolean {
     val prefs = context.getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
-    return prefs.getBoolean("notifications_scheduled", false)
+    val prefScheduled = prefs.getBoolean("notifications_scheduled", false)
+
+    // Also check WorkManager state
+    val workManager = WorkManager.getInstance(context)
+    val workInfos = workManager.getWorkInfosForUniqueWork("leetcode_periodic_notifications").get()
+    val workScheduled = workInfos.isNotEmpty() &&
+            workInfos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
+
+    return prefScheduled && workScheduled
 }
 fun createLeetCodeNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -652,7 +732,89 @@ private fun sendReminderNotification(context: Context) {
         Log.e("LeetCodeNotification", "SecurityException: ${e.message}")
     }
 }
+@Composable
+fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
+    val context = LocalContext.current
+    var isScheduled by remember { mutableStateOf(isNotificationScheduled(context)) }
 
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted ->
+            if (isGranted) {
+                if (isScheduled) {
+                    stopHourlyNotifications(context)
+                    isScheduled = false
+                } else {
+                    // Pass the problems list here
+                    scheduleHourlyNotifications(context, problems)
+                    isScheduled = true
+                }
+            } else {
+                Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
+            }
+        }
+    )
+
+    Column {
+        Button(
+            onClick = {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    val granted = ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (granted) {
+                        if (isScheduled) {
+                            stopHourlyNotifications(context)
+                            isScheduled = false
+                        } else {
+                            // Pass the problems list here
+                            scheduleHourlyNotifications(context, problems)
+                            isScheduled = true
+                        }
+                    } else {
+                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                } else {
+                    if (isScheduled) {
+                        stopHourlyNotifications(context)
+                        isScheduled = false
+                    } else {
+                        // Pass the problems list here
+                        scheduleHourlyNotifications(context, problems)
+                        isScheduled = true
+                    }
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = if (isScheduled) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            } else {
+                ButtonDefaults.buttonColors()
+            },
+            enabled = problems.isNotEmpty() // Disable if no problems
+        ) {
+            Text(
+                if (isScheduled) "Stop Hourly Notifications" else "Start Hourly Notifications"
+            )
+        }
+
+        // Show status text
+        if (problems.isEmpty()) {
+            Text(
+                text = "Load problems first to enable notifications",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
+        }
+    }
+}
 // Broadcast Receiver for handling scheduled notifications
 class LeetCodeNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
@@ -765,89 +927,7 @@ suspend fun fetchProblemCategory(slug: String): ProblemCategory {
         ProblemCategory(error = e.message)
     }
 }
-@Composable
-fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
-    val context = LocalContext.current
-    var isScheduled by remember { mutableStateOf(isNotificationScheduled(context)) }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { isGranted ->
-            if (isGranted) {
-                if (isScheduled) {
-                    stopHourlyNotifications(context)
-                    isScheduled = false
-                } else {
-                    // Pass the problems list here
-                    scheduleHourlyNotifications(context, problems)
-                    isScheduled = true
-                }
-            } else {
-                Toast.makeText(context, "Notification permission denied", Toast.LENGTH_SHORT).show()
-            }
-        }
-    )
-
-    Column {
-        Button(
-            onClick = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val granted = ContextCompat.checkSelfPermission(
-                        context,
-                        android.Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
-
-                    if (granted) {
-                        if (isScheduled) {
-                            stopHourlyNotifications(context)
-                            isScheduled = false
-                        } else {
-                            // Pass the problems list here
-                            scheduleHourlyNotifications(context, problems)
-                            isScheduled = true
-                        }
-                    } else {
-                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                } else {
-                    if (isScheduled) {
-                        stopHourlyNotifications(context)
-                        isScheduled = false
-                    } else {
-                        // Pass the problems list here
-                        scheduleHourlyNotifications(context, problems)
-                        isScheduled = true
-                    }
-                }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = if (isScheduled) {
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
-            } else {
-                ButtonDefaults.buttonColors()
-            },
-            enabled = problems.isNotEmpty() // Disable if no problems
-        ) {
-            Text(
-                if (isScheduled) "Stop Hourly Notifications" else "Start Hourly Notifications"
-            )
-        }
-
-        // Show status text
-        if (problems.isEmpty()) {
-            Text(
-                text = "Load problems first to enable notifications",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
-    }
-}
 
 
 // Modified LeetCodeScreen with category fetching

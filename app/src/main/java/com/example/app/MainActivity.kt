@@ -2,8 +2,14 @@
 
 package com.arjundubey.app
 
+import android.app.AlarmManager
+
+
+import android.provider.Settings
+import android.util.Log
 
 import android.Manifest
+
 import com.razorpay.Checkout
 import com.razorpay.PaymentResultListener
 
@@ -70,8 +76,11 @@ import androidx.compose.foundation.background
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-import com.arjundubey.resumebuilder.ResumeBuilderApp
+
+
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
+import io.ktor.http.ContentType
 
 data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
 
@@ -99,6 +108,8 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
     private var notificationProblemSlug by mutableStateOf<String?>(null)
     private var notificationProblemUrl by mutableStateOf<String?>(null)
 
+    private lateinit var cardNotificationManager: CardNotificationManager
+
     private fun handleNotificationClick(intent: Intent?) {
         if (intent?.getBooleanExtra("from_notification", false) == true) {
             val problemSlug = intent.getStringExtra("problem_slug") ?: ""
@@ -111,22 +122,46 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
             }
         }
     }
+
+    // Add this helper function to handle boot rescheduling for LeetCode notifications
+    private fun handleLeetCodeBootRescheduling(problems: List<EnhancedProblemStat>) {
+        val prefs = getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
+        val needsReschedule = prefs.getBoolean("needs_reschedule_after_boot", false)
+
+        if (needsReschedule && problems.isNotEmpty()) {
+            scheduleHourlyNotifications(this, problems)
+            Log.d("MainActivity", "Rescheduled LeetCode notifications after boot with fresh problem data")
+        }
+    }
+
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,
         grantResults: IntArray
     ) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == 1) {
-            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted, start notifications
-                cardNotificationManager.startNotifications()
-            } else {
-                // Handle permission denial
-                Toast.makeText(this, "Notification permission is required", Toast.LENGTH_LONG).show()
+        when (requestCode) {
+            1 -> {
+                if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted, start notifications
+                    cardNotificationManager.startNotifications()
+                } else {
+                    // Handle permission denial
+                    Toast.makeText(this, "Notification permission is required", Toast.LENGTH_LONG).show()
+                }
+            }
+            // Add handling for exact alarm permission (Android 12+)
+            2 -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                    if (alarmManager?.canScheduleExactAlarms() == false) {
+                        Toast.makeText(this, "Exact alarm permission is required for precise notifications", Toast.LENGTH_LONG).show()
+                    }
+                }
             }
         }
     }
+
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
@@ -141,13 +176,29 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 )
             }
         }
+
+        // Also request exact alarm permission for Android 12+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            if (alarmManager?.canScheduleExactAlarms() == false) {
+                try {
+                    val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    Log.e("MainActivity", "Could not open exact alarm settings", e)
+                    Toast.makeText(this, "Please enable exact alarm permission in settings", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
     }
-    private lateinit var cardNotificationManager: CardNotificationManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirebaseApp.initializeApp(this)
 
         // Handle notification click BEFORE setContent
         handleNotificationClick(intent)
+
         cardNotificationManager = CardNotificationManager(this)
 
         // Request notification permission for Android 13+
@@ -155,9 +206,14 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
 
         // Start notifications
         cardNotificationManager.startNotifications()
+
         Checkout.preload(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         createNotificationChannel(this)
+
+        // Create LeetCode notification channel
+        createLeetCodeNotificationChannel(this)
+
         setContent {
             val context = LocalContext.current
             val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
@@ -172,6 +228,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                     user.value = auth.currentUser
                 }
             }
+
             LaunchedEffect(user.value) {
                 user.value?.email?.let { email ->
                     Premium.checkIfPremium(email) { isPremium = it }
@@ -199,6 +256,10 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                         onNotificationHandled = {
                             notificationProblemSlug = null
                             notificationProblemUrl = null
+                        },
+                        // Add callback to handle boot rescheduling when problems are loaded
+                        onProblemsLoaded = { problems ->
+                            handleLeetCodeBootRescheduling(problems)
                         }
                     )
                 }
@@ -229,7 +290,6 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
             Toast.makeText(this, "🙏 Thank you for your donation!", Toast.LENGTH_SHORT).show()
         }
     }
-
 
     override fun onPaymentError(code: Int, response: String?) {
         Toast.makeText(this, "❌ Payment Failed: $response", Toast.LENGTH_LONG).show()
@@ -334,9 +394,10 @@ fun WebsitesList() {
 @Composable
 fun MainScreen(
     isPremium: Boolean,
-    notificationProblemSlug: String? = null,
-    notificationProblemUrl: String? = null,
-    onNotificationHandled: () -> Unit = {}
+    notificationProblemSlug: String?,
+    notificationProblemUrl: String?,
+    onNotificationHandled: () -> Unit,
+    onProblemsLoaded: (List<EnhancedProblemStat>) -> Unit // Add this parameter
 ) {
     val context = LocalContext.current
     val drawerState = rememberDrawerState(DrawerValue.Closed) // ✅ Declare this
@@ -346,13 +407,31 @@ fun MainScreen(
 
     var currentScreen by remember { mutableStateOf("Tasks") } // default
     LaunchedEffect(notificationProblemSlug) {
+
         if (notificationProblemSlug != null) {
-            currentScreen = "Leet"
-            ScreenPrefs.saveScreen(context, "Leet")
+            currentScreen = "Problems"
+            ScreenPrefs.saveScreen(context, "Problems")
         }
     }
     LaunchedEffect(Unit) {
         currentScreen = ScreenPrefs.getSavedScreen(context)
+    }
+    LaunchedEffect(Unit) {
+        val cachedProblems = getCachedProblems(context)
+        val savedProblemIds = getSavedProblems(context) // Import this function
+
+        // Filter cached problems to only include saved ones, or use as needed
+        val filteredProblems = if (savedProblemIds.isNotEmpty()) {
+            cachedProblems.filter { problem ->
+                savedProblemIds.contains(problem.stat.question__title_slug) ||
+                        savedProblemIds.contains(problem.stat.question_id.toString())
+            }
+        } else {
+            cachedProblems
+        }
+
+        onProblemsLoaded(filteredProblems)
+        Log.d("MainScreen", "Loaded ${filteredProblems.size} problems (${savedProblemIds.size} saved)")
     }
 
     val auth = remember { FirebaseAuth.getInstance() }
@@ -425,7 +504,7 @@ fun MainScreen(
                     val screens = if (isPremium) {
                         listOf("Home", "Tasks","Login/Signup")// "Scrape", "Premium Features", "Donate"
                     } else {
-                        listOf( "Home","Tasks","Login/Signup"  )//"Buy Premium""Scrape","Donate","Leet"
+                        listOf( "Home","Problems","Oppurtunities","Tasks","Resume","Login/Signup" )//"Buy Premium""Scrape","Donate","Leet"
                     }
 
                     screens.forEach { screen ->
@@ -501,7 +580,8 @@ fun MainScreen(
                 when (currentScreen) {
                     "Home" -> HomeScreen()
                     "Tasks" -> CardListManager()
-//                    "Scrape" -> ScraperScreen()
+                    "Oppurtunities" -> ScraperScreen()
+"Resume"->ResumeBuilderApp()
                     "Login/Signup"->Box(    modifier = Modifier
                         .fillMaxSize()
 
@@ -511,10 +591,10 @@ fun MainScreen(
                         }
                     )}
 //                    "Full" -> Hack()
-//                    "Leet" -> LeetCodeScreen(
-//                        notificationProblemSlug = notificationProblemSlug,
-//                        onNotificationHandled = onNotificationHandled
-//                    )
+                    "Problems" -> LeetCodeScreen(
+                        notificationProblemSlug = notificationProblemSlug,
+                        onNotificationHandled = onNotificationHandled
+                    )
 //                    "Buy Premium" -> PremiumScreen {
 //                        // You can do any of these:
 //                        // - Show a toast

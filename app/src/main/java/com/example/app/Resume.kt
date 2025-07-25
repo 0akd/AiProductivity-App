@@ -1,4 +1,5 @@
-package com.arjundubey.resumebuilder
+
+package com.arjundubey.app
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -38,17 +39,20 @@ import androidx.compose.ui.text.font.FontWeight
 import com.google.gson.Gson
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import com.google.firebase.auth.FirebaseAuth
 
-class MainActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                ResumeBuilderApp()
-            }
-        }
-    }
-}
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.ktx.firestore
+import com.google.firebase.ktx.Firebase
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.CloudDownload
+import kotlinx.coroutines.tasks.await
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.CircularProgressIndicator
+
 
 // Data classes for resume structure
 class PersonalInfo {
@@ -61,7 +65,15 @@ class PersonalInfo {
     var github by mutableStateOf("")
     var website by mutableStateOf("")
 }
-
+data class FirestoreResumeData(
+    val personal: Map<String, String> = mapOf(),
+    val education: List<Map<String, String>> = listOf(),
+    val experience: List<Map<String, Any>> = listOf(),
+    val projects: List<Map<String, Any>> = listOf(),
+    val skills: Map<String, List<String>> = mapOf(),
+    val userEmail: String = "",
+    val lastUpdated: Long = System.currentTimeMillis()
+)
 class Education {
     var institution by mutableStateOf("")
     var degree by mutableStateOf("")
@@ -111,23 +123,97 @@ enum class ResumeTab(val title: String, val icon: ImageVector) {
     SKILLS("Skills", Icons.Default.Star)
 }
 
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResumeBuilderApp() {
     val resumeData = remember { mutableStateOf(ResumeData()) }
     val selectedTab = remember { mutableStateOf(ResumeTab.PERSONAL) }
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val repository = remember { ResumeRepository() }
+
+    var saveStatus by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+
+    // Load data on app start
+    LaunchedEffect(Unit) {
+        isLoading = true
+        repository.loadResumeData().fold(
+            onSuccess = { loadedData ->
+                loadedData?.let { resumeData.value = it }
+                isLoading = false
+            },
+            onFailure = {
+                isLoading = false
+                Toast.makeText(context, "Failed to load resume data", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
 
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Top App Bar
+        // Top App Bar with Save button
         TopAppBar(
             title = {
                 Text(
                     text = "Resume Builder",
                     fontWeight = FontWeight.Bold
                 )
+            },
+            actions = {
+                // Auto-save indicator
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isLoading = true
+                                repository.saveResumeData(resumeData.value).fold(
+                                    onSuccess = { message ->
+                                        saveStatus = message
+                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                        isLoading = false
+                                    },
+                                    onFailure = { error ->
+                                        Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                        isLoading = false
+                                    }
+                                )
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = "Save Resume")
+                    }
+                }
+
+                IconButton(
+                    onClick = {
+                        coroutineScope.launch {
+                            isLoading = true
+                            repository.loadResumeData().fold(
+                                onSuccess = { loadedData ->
+                                    loadedData?.let {
+                                        resumeData.value = it
+                                        Toast.makeText(context, "Resume loaded successfully!", Toast.LENGTH_SHORT).show()
+                                    } ?: Toast.makeText(context, "No saved resume found", Toast.LENGTH_SHORT).show()
+                                    isLoading = false
+                                },
+                                onFailure = { error ->
+                                    Toast.makeText(context, "Load failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                    isLoading = false
+                                }
+                            )
+                        }
+                    }
+                ) {
+                    Icon(Icons.Default.CloudDownload, contentDescription = "Load Resume")
+                }
             },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -164,10 +250,174 @@ fun ResumeBuilderApp() {
                 ResumeTab.SKILLS -> SkillsTab(resumeData.value.skills)
             }
         }
-        DownloadResumeScreen(context, resumeData.value)
 
+        DownloadResumeScreen(context, resumeData.value)
     }
 }
+class ResumeRepository {
+    private val firestore = Firebase.firestore
+    private val auth = FirebaseAuth.getInstance()
+
+    fun getCurrentUserEmail(): String? {
+        return auth.currentUser?.email
+    }
+
+    suspend fun saveResumeData(resumeData: ResumeData): Result<String> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            val firestoreData = FirestoreResumeData(
+                personal = mapOf(
+                    "name" to resumeData.personal.name,
+                    "title" to resumeData.personal.title,
+                    "email" to resumeData.personal.email,
+                    "phone" to resumeData.personal.phone,
+                    "location" to resumeData.personal.location,
+                    "linkedin" to resumeData.personal.linkedin,
+                    "github" to resumeData.personal.github,
+                    "website" to resumeData.personal.website
+                ),
+                education = resumeData.education.map { edu ->
+                    mapOf(
+                        "institution" to edu.institution,
+                        "degree" to edu.degree,
+                        "location" to edu.location,
+                        "startDate" to edu.startDate,
+                        "endDate" to edu.endDate
+                    )
+                },
+                experience = resumeData.experience.map { exp ->
+                    mapOf(
+                        "title" to exp.title,
+                        "company" to exp.company,
+                        "location" to exp.location,
+                        "startDate" to exp.startDate,
+                        "endDate" to exp.endDate,
+                        "responsibilities" to exp.responsibilities.toList()
+                    )
+                },
+                projects = resumeData.projects.map { proj ->
+                    mapOf(
+                        "name" to proj.name,
+                        "technologies" to proj.technologies,
+                        "startDate" to proj.startDate,
+                        "endDate" to proj.endDate,
+                        "description" to proj.description.toList(),
+                        "link" to proj.link
+                    )
+                },
+                skills = mapOf(
+                    "languages" to resumeData.skills.languages.toList(),
+                    "frameworks" to resumeData.skills.frameworks.toList(),
+                    "tools" to resumeData.skills.tools.toList(),
+                    "libraries" to resumeData.skills.libraries.toList()
+                ),
+                userEmail = userEmail
+            )
+
+            firestore.collection("resumes")
+                .document(userEmail)
+                .set(firestoreData)
+                .await()
+
+            Result.success("Resume saved successfully!")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun loadResumeData(): Result<ResumeData?> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            val document = firestore.collection("resumes")
+                .document(userEmail)
+                .get()
+                .await()
+
+            if (!document.exists()) {
+                return Result.success(null)
+            }
+
+            val data = document.toObject(FirestoreResumeData::class.java)
+                ?: return Result.success(null)
+
+            val resumeData = ResumeData().apply {
+                // Load personal info
+                personal.name = data.personal["name"] ?: ""
+                personal.title = data.personal["title"] ?: ""
+                personal.email = data.personal["email"] ?: ""
+                personal.phone = data.personal["phone"] ?: ""
+                personal.location = data.personal["location"] ?: ""
+                personal.linkedin = data.personal["linkedin"] ?: ""
+                personal.github = data.personal["github"] ?: ""
+                personal.website = data.personal["website"] ?: ""
+
+                // Load education
+                education.clear()
+                data.education.forEach { eduMap ->
+                    education.add(Education().apply {
+                        institution = eduMap["institution"] ?: ""
+                        degree = eduMap["degree"] ?: ""
+                        location = eduMap["location"] ?: ""
+                        startDate = eduMap["startDate"] ?: ""
+                        endDate = eduMap["endDate"] ?: ""
+                    })
+                }
+
+                // Load experience
+                experience.clear()
+                data.experience.forEach { expMap ->
+                    experience.add(Experience().apply {
+                        title = expMap["title"] as? String ?: ""
+                        company = expMap["company"] as? String ?: ""
+                        location = expMap["location"] as? String ?: ""
+                        startDate = expMap["startDate"] as? String ?: ""
+                        endDate = expMap["endDate"] as? String ?: ""
+                        responsibilities.clear()
+                        (expMap["responsibilities"] as? List<*>)?.forEach { resp ->
+                            responsibilities.add(resp as? String ?: "")
+                        }
+                    })
+                }
+
+                // Load projects
+                projects.clear()
+                data.projects.forEach { projMap ->
+                    projects.add(Project().apply {
+                        name = projMap["name"] as? String ?: ""
+                        technologies = projMap["technologies"] as? String ?: ""
+                        startDate = projMap["startDate"] as? String ?: ""
+                        endDate = projMap["endDate"] as? String ?: ""
+                        link = projMap["link"] as? String ?: ""
+                        description.clear()
+                        (projMap["description"] as? List<*>)?.forEach { desc ->
+                            description.add(desc as? String ?: "")
+                        }
+                    })
+                }
+
+                // Load skills
+                skills.languages.clear()
+                skills.frameworks.clear()
+                skills.tools.clear()
+                skills.libraries.clear()
+
+                data.skills["languages"]?.forEach { skills.languages.add(it) }
+                data.skills["frameworks"]?.forEach { skills.frameworks.add(it) }
+                data.skills["tools"]?.forEach { skills.tools.add(it) }
+                data.skills["libraries"]?.forEach { skills.libraries.add(it) }
+            }
+
+            Result.success(resumeData)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+}
+
 
 @Composable
 fun PersonalInfoTab(personalInfo: PersonalInfo) {
@@ -246,7 +496,10 @@ fun PersonalInfoTab(personalInfo: PersonalInfo) {
 @Composable
 fun EducationTab(educationList: SnapshotStateList<Education>) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -259,22 +512,50 @@ fun EducationTab(educationList: SnapshotStateList<Education>) {
                 fontWeight = FontWeight.Bold
             )
 
-            IconButton(
-                onClick = { educationList.add(Education()) }
+            // Enhanced Add button with background
+            Button(
+                onClick = { educationList.add(Education()) },
+                modifier = Modifier.padding(start = 8.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Education")
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Education",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Education")
             }
         }
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(educationList) { index, education ->
-                EducationItem(
-                    education = education,
-                    onDelete = { educationList.removeAt(index) }
-                )
+        // Show message if no education entries
+        if (educationList.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "No education entries yet",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Click the + button to add your education",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+        }
+
+        // Display education items
+        educationList.forEachIndexed { index, education ->
+            EducationItem(
+                education = education,
+                onDelete = { educationList.removeAt(index) }
+            )
         }
     }
 }
@@ -349,7 +630,10 @@ fun EducationItem(education: Education, onDelete: () -> Unit) {
 @Composable
 fun ExperienceTab(experienceList: SnapshotStateList<Experience>) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -362,26 +646,53 @@ fun ExperienceTab(experienceList: SnapshotStateList<Experience>) {
                 fontWeight = FontWeight.Bold
             )
 
-            IconButton(
+            Button(
                 onClick = {
                     experienceList.add(Experience().apply {
                         responsibilities.add("")
                     })
-                }
+                },
+                modifier = Modifier.padding(start = 8.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Experience")
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Experience",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Experience")
             }
         }
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(experienceList) { index, experience ->
-                ExperienceItem(
-                    experience = experience,
-                    onDelete = { experienceList.removeAt(index) }
-                )
+        // Show message if no experience entries
+        if (experienceList.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "No experience entries yet",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Click the + button to add your work experience",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+        }
+
+        // Display experience items
+        experienceList.forEachIndexed { index, experience ->
+            ExperienceItem(
+                experience = experience,
+                onDelete = { experienceList.removeAt(index) }
+            )
         }
     }
 }
@@ -489,7 +800,10 @@ fun ExperienceItem(experience: Experience, onDelete: () -> Unit) {
 @Composable
 fun ProjectsTab(projectsList: SnapshotStateList<Project>) {
     Column(
-        modifier = Modifier.fillMaxSize()
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -502,26 +816,53 @@ fun ProjectsTab(projectsList: SnapshotStateList<Project>) {
                 fontWeight = FontWeight.Bold
             )
 
-            IconButton(
+            Button(
                 onClick = {
                     projectsList.add(Project().apply {
                         description.add("")
                     })
-                }
+                },
+                modifier = Modifier.padding(start = 8.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = "Add Project")
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Project",
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Project")
             }
         }
 
-        LazyColumn(
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            itemsIndexed(projectsList) { index, project ->
-                ProjectItem(
-                    project = project,
-                    onDelete = { projectsList.removeAt(index) }
-                )
+        // Show message if no project entries
+        if (projectsList.isEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "No project entries yet",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        text = "Click the + button to add your projects",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
+        }
+
+        // Display project items
+        projectsList.forEachIndexed { index, project ->
+            ProjectItem(
+                project = project,
+                onDelete = { projectsList.removeAt(index) }
+            )
         }
     }
 }

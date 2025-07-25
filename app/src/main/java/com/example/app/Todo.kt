@@ -59,10 +59,12 @@ import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.*
+import kotlinx.coroutines.delay
 
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -70,14 +72,18 @@ import java.util.concurrent.TimeUnit
 data class CardItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
+    val check: Boolean =false,
     val description: String,
     val value: Int = 0,
     val priority: Int,
     val youtubeUrl: String = "",
-    val userEmail: String = "" // New field for user email
+    val userEmail: String = "",
+    val disableHorizontalDrag: Boolean = true,
+    val counter:Int=0,
+    val timerValue: Long=0,
 ) {
     // Empty constructor for Firestore
-    constructor() : this("", "", "", 0, 0, "", "")
+    constructor() : this("", "", false,"", 0, 0, "", "",true,0,0)
 }
 
 
@@ -563,8 +569,18 @@ class CardRepository(private val context: Context) {
     suspend fun resetAllCardValues(): Boolean {
         return try {
             val cards = loadCards() // This already filters by user
-            val resetCards = cards.map { it.copy(value = 0) }
+         val resetCards = cards.map { card ->
+                card.copy(
+                    value = 0,
+                    check = false,                     // ← reset boolean field
+                    counter = 0,                       // ← optionally reset other fields
+                    timerValue = 0L  ,
+                    disableHorizontalDrag=true,// ← reset timer if needed
+                )
+            }
             saveCards(resetCards)
+
+
         } catch (e: Exception) {
             println("Error resetting card values: ${e.message}")
             e.printStackTrace()
@@ -662,11 +678,1037 @@ class CardRepository(private val context: Context) {
         sharedPrefs.edit().remove("cards_$userEmail").apply()
     }
 }
-// Add this import at the top of your file if not already present
-// import androidx.compose.runtime.DisposableEffect
 
-// Add this import at the top of your file if not already present
-// import androidx.compose.runtime.DisposableEffect
+
+
+@Composable
+fun CardListManager() {
+    val context = LocalContext.current
+    val repository = remember { CardRepository(context) }
+    val scope = rememberCoroutineScope()
+    val notificationManager = remember { CardNotificationManager(context) }
+    var cards by remember { mutableStateOf(listOf<CardItem>()) }
+    var showAddDialog by remember { mutableStateOf(false) }
+    var selectedCard by remember { mutableStateOf<CardItem?>(null) }
+    var showDetailDialog by remember { mutableStateOf(false) }
+    var cardToDelete by remember { mutableStateOf<CardItem?>(null) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var isLoading by remember { mutableStateOf(true) }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var isOperationInProgress by remember { mutableStateOf(false) }
+    var draggedCard by remember { mutableStateOf<CardItem?>(null) }
+    var draggedOverIndex by remember { mutableIntStateOf(-1) }
+    var isNotificationEnabled by remember { mutableStateOf(false) }
+    var currentUserEmail by remember { mutableStateOf<String?>(null) }
+    var showLoginPrompt by remember { mutableStateOf(false) }
+    var isInitialLoad by remember { mutableStateOf(true) }
+    // 🔥 FIXED: Use mutableStateOf instead of remember with mutableMapOf
+    var disableHorizontalDragMap by remember { mutableStateOf(mutableMapOf<String, Boolean>()) }
+
+    // Check user authentication on startup
+    LaunchedEffect(Unit) {
+        currentUserEmail = UserAuthHelper.getCurrentUserEmail()
+
+        if (currentUserEmail == null) {
+            showLoginPrompt = true
+            isLoading = false
+        } else {
+            try {
+                isNotificationEnabled = notificationManager.isNotificationScheduled()
+                cards = repository.loadCards().sortedBy { it.priority }
+            } catch (e: Exception) {
+                println("Failed to load user data: ${e.message}")
+            } finally {
+                isLoading = false
+                isInitialLoad = false
+            }
+        }
+    }
+
+    // Load data when user email changes (after login)
+    LaunchedEffect(currentUserEmail) {
+        if (currentUserEmail != null && !showLoginPrompt) {
+            try {
+                isLoading = true
+                isInitialLoad = true
+                isNotificationEnabled = notificationManager.isNotificationScheduled()
+                cards = repository.loadCards().sortedBy { it.priority }
+            } catch (e: Exception) {
+                println("Failed to load user data after login: ${e.message}")
+            } finally {
+                isLoading = false
+                isInitialLoad = false
+            }
+        }
+    }
+
+    // SOLUTION 1: Use functional state updates to avoid stale closures
+    fun updateCardById(cardId: String, updateFunction: (CardItem) -> CardItem) {
+        cards = cards.map { card ->
+            if (card.id == cardId) {
+                updateFunction(card) // Always uses the latest card state
+            } else {
+                card
+            }
+        }
+    }
+
+    // SOLUTION 2: Centralized card update function that always uses latest state
+    fun saveCardUpdate(cardId: String, updateFunction: (CardItem) -> CardItem) {
+        if (!isOperationInProgress && !isInitialLoad) {
+            // Update local state immediately using the current card state
+            val updatedCard = cards.find { it.id == cardId }?.let(updateFunction)
+
+            if (updatedCard != null) {
+                updateCardById(cardId, updateFunction)
+
+                // Save to repository asynchronously
+                scope.launch {
+                    isOperationInProgress = true
+                    try {
+                        val success = repository.updateCard(updatedCard)
+                        if (!success) {
+                            println("Failed to save card value, reverting local changes")
+                            cards = repository.loadCards().sortedBy { it.priority }
+                        }
+                    } catch (e: Exception) {
+                        println("Error saving card: ${e.message}")
+                        cards = repository.loadCards().sortedBy { it.priority }
+                    } finally {
+                        isOperationInProgress = false
+                    }
+                }
+            }
+        }
+    }
+
+    // SOLUTION 3: Get current card state function to avoid stale references
+    fun getCurrentCard(cardId: String): CardItem? {
+        return cards.find { it.id == cardId }
+    }
+
+    fun reorderCards(fromIndex: Int, toIndex: Int) {
+        if (fromIndex == toIndex || currentUserEmail == null || isOperationInProgress) return
+
+        val reorderedCards = cards.toMutableList()
+        val draggedCard = reorderedCards.removeAt(fromIndex)
+        reorderedCards.add(toIndex, draggedCard)
+        cards = reorderedCards
+
+        scope.launch {
+            isOperationInProgress = true
+            try {
+                val success = repository.updateCardPriorities(reorderedCards)
+                if (!success) {
+                    println("Failed to save card order, reverting")
+                    cards = repository.loadCards().sortedBy { it.priority }
+                }
+            } catch (e: Exception) {
+                println("Error reordering cards: ${e.message}")
+                cards = repository.loadCards().sortedBy { it.priority }
+            } finally {
+                isOperationInProgress = false
+            }
+        }
+    }
+
+    // Show login prompt if user is not authenticated
+    if (showLoginPrompt) {
+        LoginPromptScreen(
+            onLoginSuccess = { email ->
+                currentUserEmail = email
+                showLoginPrompt = false
+            },
+            onLoginRequired = {
+                println("User needs to login")
+            }
+        )
+        return
+    }
+
+    // Show loading screen
+    if (isLoading) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                CircularProgressIndicator(color = Color(0xFF6200EE))
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Loading your cards...",
+                    color = Color.Gray
+                )
+                currentUserEmail?.let { email ->
+                    Text(
+                        text = "Signed in as: $email",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+        }
+        return
+    }
+
+    // Main UI with proper Box layout
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
+                .padding(bottom = 80.dp)
+        ) {
+            // Cards List or Empty State
+            if (cards.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            "No cards yet!",
+                            fontSize = 18.sp,
+                            color = Color.Gray
+                        )
+                        Text(
+                            "Tap + to add your first card",
+                            fontSize = 14.sp,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            } else {
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(
+                        count = cards.size,
+                        key = { index -> cards[index].id } // FIXED: Use count parameter and proper key function
+                    ) { index ->
+                        val card = cards[index] // FIXED: Get card by index
+
+                        DraggableSwipeableCard(
+                            card = card,
+                            index = index,
+                            getCurrentValue = {
+                                getCurrentCard(card.id)?.value ?: card.value
+                            },
+                            onValueChanged = { newValue ->
+                                saveCardUpdate(card.id) { currentCard ->
+                                    currentCard.copy(value = newValue)
+                                }
+                            },
+                            onCardClick = {
+                                selectedCard = getCurrentCard(card.id)
+                                showDetailDialog = true
+                            },
+                            onDeleteRequest = {
+                                cardToDelete = getCurrentCard(card.id)
+                                showDeleteDialog = true
+                            },
+                            onEdit = { updatedCard ->
+                                updateCardById(card.id) { _ -> updatedCard }
+                                scope.launch {
+                                    isOperationInProgress = true
+                                    try {
+                                        val success = repository.updateCard(updatedCard)
+                                        if (!success) {
+                                            cards = repository.loadCards().sortedBy { it.priority }
+                                        }
+                                    } finally {
+                                        isOperationInProgress = false
+                                    }
+                                }
+                            },
+                            onDragStart = { draggedCard = getCurrentCard(card.id) },
+                            onDragEnd = {
+                                draggedCard = null
+                                draggedOverIndex = -1
+                            },
+                            onDragOver = { draggedOverIndex = index },
+                            onReorder = { fromIndex, toIndex -> reorderCards(fromIndex, toIndex) },
+                            isDraggedOver = draggedOverIndex == index,
+                            isDragging = draggedCard?.id == card.id,
+                            onCheckChanged = { isChecked ->
+                                saveCardUpdate(card.id) { currentCard ->
+                                    currentCard.copy(check = isChecked)
+                                }
+                            },
+
+                            // 🔥 FIXED: Updated callback to properly update the map
+                            disableHorizontalDrag = card.disableHorizontalDrag,
+
+                            onDisableHorizontalDragChanged = { isDisabled ->
+                                val newMap = disableHorizontalDragMap.toMutableMap()
+                                newMap[card.id] = isDisabled
+                                disableHorizontalDragMap = newMap
+
+                                // Update card's state and persist it
+                                saveCardUpdate(card.id) { currentCard ->
+                                    currentCard.copy(disableHorizontalDrag = isDisabled)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Fixed positioned buttons at bottom right
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(16.dp)
+        ) {
+            // Notification Toggle Button
+            IconButton(
+                onClick = {
+                    if (isNotificationEnabled) {
+                        notificationManager.stopNotifications()
+                        isNotificationEnabled = false
+                    } else {
+                        notificationManager.startNotifications()
+                        isNotificationEnabled = true
+                    }
+                },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        if (isNotificationEnabled) Color(0xFF4CAF50) else Color(0xFF757575),
+                        CircleShape
+                    )
+            ) {
+                Icon(
+                    imageVector = if (isNotificationEnabled)
+                        Icons.Default.Notifications
+                    else
+                        Icons.Default.NotificationsOff,
+                    contentDescription = if (isNotificationEnabled) "Stop Notifications" else "Start Notifications",
+                    tint = Color.White
+                )
+            }
+
+            // Reset Button
+            IconButton(
+                onClick = { showConfirmDialog = true },
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(
+                        Color(0xFF6200EE),
+                        CircleShape
+                    )
+            ) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Reset",
+                    tint = Color.White
+                )
+            }
+
+            // Add Button
+            FloatingActionButton(
+                onClick = { showAddDialog = true },
+                containerColor = Color(0xFF03DAC6),
+                modifier = Modifier.size(48.dp)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = "Add Card",
+                    tint = Color.White
+                )
+            }
+        }
+    }
+
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("Reset All Cards") },
+            text = { Text("Are you sure you want to reset all card values to 0?") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            isOperationInProgress = true
+                            try {
+                                val success = repository.resetAllCardValues()
+                                if (success) {
+                                    cards = repository.loadCards().sortedBy { it.priority }
+                                    disableHorizontalDragMap = cards.associate { it.id to it.disableHorizontalDrag }.toMutableMap()
+                                } else {
+                                    println("Failed to reset card values")
+                                }
+                            } catch (e: Exception) {
+                                println("Error resetting cards: ${e.message}")
+                                cards = repository.loadCards().sortedBy { it.priority }
+                            } finally {
+                                isOperationInProgress = false
+                            }
+                        }
+                        showConfirmDialog = false
+                    }
+                ) { Text("Reset") }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showConfirmDialog = false }
+                ) { Text("Cancel") }
+            }
+        )
+    }
+
+    // Add Card Dialog
+    if (showAddDialog) {
+        AddEditCardDialog(
+            card = null,
+            onDismiss = { showAddDialog = false },
+            onSave = { name, description, youtubeUrl ->
+                scope.launch {
+                    isOperationInProgress = true
+                    try {
+                        val newCard = CardItem(
+                            name = name,
+                            description = description,
+                            youtubeUrl = youtubeUrl,
+                            priority = cards.size
+                        )
+                        val success = repository.createCard(newCard)
+                        if (success) {
+                            cards = cards + newCard
+                        } else {
+                            println("Failed to create card")
+                        }
+                    } catch (e: Exception) {
+                        println("Error creating card: ${e.message}")
+                    } finally {
+                        isOperationInProgress = false
+                    }
+                }
+                showAddDialog = false
+            }
+        )
+    }
+
+    // Card Detail Dialog
+    if (showDetailDialog && selectedCard != null) {
+        // FIXED: Always use the latest card state for the dialog
+        val currentSelectedCard = getCurrentCard(selectedCard!!.id) ?: selectedCard!!
+        CardDetailDialog(
+            card = currentSelectedCard,
+            onDismiss = { showDetailDialog = false },
+            onEdit = { updatedCard ->
+                updateCardById(updatedCard.id) { _ -> updatedCard }
+
+                scope.launch {
+                    isOperationInProgress = true
+                    try {
+                        val success = repository.updateCard(updatedCard)
+                        if (!success) {
+                            println("Failed to update card, reverting changes")
+                            cards = repository.loadCards().sortedBy { it.priority }
+                        }
+                    } catch (e: Exception) {
+                        println("Error updating card: ${e.message}")
+                        cards = repository.loadCards().sortedBy { it.priority }
+                    } finally {
+                        isOperationInProgress = false
+                    }
+                }
+
+                selectedCard = updatedCard
+                showDetailDialog = false
+
+            },
+            disableHorizontalDrag = currentSelectedCard.disableHorizontalDrag
+        )
+    }
+
+    // Delete Confirmation Dialog
+    if (showDeleteDialog && cardToDelete != null) {
+        DeleteConfirmationDialog(
+            cardName = cardToDelete!!.name,
+            onConfirm = {
+                scope.launch {
+                    isOperationInProgress = true
+                    try {
+                        val success = repository.deleteCard(cardToDelete!!.id)
+                        if (success) {
+                            cards = cards.filter { it.id != cardToDelete!!.id }
+                        } else {
+                            println("Failed to delete card")
+                        }
+                    } catch (e: Exception) {
+                        println("Error deleting card: ${e.message}")
+                    } finally {
+                        isOperationInProgress = false
+                        cardToDelete = null
+                        showDeleteDialog = false
+                    }
+                }
+            },
+            onDismiss = {
+                cardToDelete = null
+                showDeleteDialog = false
+            }
+        )
+    }
+}
+@Composable
+fun CounterPopup(
+    initialValue: Int,
+    onDismiss: (Int) -> Unit
+) {
+    var count by remember { mutableStateOf(initialValue) }
+
+    AlertDialog(
+        onDismissRequest = { onDismiss(count) },
+        title = { Text("Counter") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("Current Count: $count", fontSize = 20.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Button(onClick = { count-- }) {
+                        Text("➖", fontSize = 24.sp)
+                    }
+                    Button(onClick = { count++ }) {
+                        Text("➕", fontSize = 24.sp)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            IconButton(onClick = { onDismiss(count) }) {
+                Text("❌", fontSize = 24.sp)
+            }
+        }
+    )
+}
+@Composable
+fun TimerPopup(
+    initialTime: Long,
+    onDismiss: (Long) -> Unit
+) {
+    var time by remember { mutableStateOf(initialTime) }
+    var isRunning by remember { mutableStateOf(false) }
+    var startTime by remember { mutableStateOf(0L) }
+
+    // Effect to update timer
+    LaunchedEffect(isRunning) {
+        while (isRunning) {
+            delay(1000L)
+            time++
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = {
+            onDismiss(time) // Save current time on popup dismiss
+        },
+        title = { Text("Timer") },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "Time: ${time}s",
+                    fontSize = 20.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (!isRunning) {
+                    Button(onClick = {
+                        isRunning = true
+                        startTime = System.currentTimeMillis()
+                    }) {
+                        Text("▶ Start")
+                    }
+                } else {
+                    Button(onClick = {
+                        isRunning = false
+                    }) {
+                        Text("⏹ Stop")
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            IconButton(
+                onClick = {
+                    isRunning = false
+                    onDismiss(time)
+                }
+            ) {
+                Text("❌", fontSize = 24.sp)
+            }
+        }
+    )
+}
+
+// Alternative approach: Modify the SwipeableCard to get current value dynamically
+@Composable
+fun DraggableSwipeableCard(
+    card: CardItem,
+    index: Int,
+    getCurrentValue: () -> Int,
+    onValueChanged: (Int) -> Unit,
+    onCardClick: () -> Unit,
+    onDeleteRequest: () -> Unit,
+    onEdit: (CardItem) -> Unit,
+    onDragStart: () -> Unit,
+    onDragEnd: () -> Unit,
+    onDragOver: () -> Unit,
+    onReorder: (Int, Int) -> Unit,
+    isDraggedOver: Boolean,
+    isDragging: Boolean,
+    onCheckChanged: (Boolean) -> Unit,
+    disableHorizontalDrag: Boolean,
+    onDisableHorizontalDragChanged: (Boolean) -> Unit
+) {
+    var horizontalDragOffset by remember { mutableFloatStateOf(0f) }
+    var verticalDragOffset by remember { mutableFloatStateOf(0f) }
+    var showEditDialog by remember { mutableStateOf(false) }
+    var isHorizontalDragging by remember { mutableStateOf(false) }
+    var isVerticalDragging by remember { mutableStateOf(false) }
+    var startIndex by remember { mutableIntStateOf(-1) }
+    var showTimerPopup by remember { mutableStateOf(false) }
+    var showPopup by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val swipeThreshold = with(density) { 40.dp.toPx() }
+    val reorderThreshold = with(density) { 60.dp.toPx() }
+
+    val currentValue = getCurrentValue()
+    val cardColor = getCardColor(currentValue)
+    val animatedColor by animateColorAsState(
+        targetValue = if (disableHorizontalDrag) MaterialTheme.colorScheme.onBackground else getCardColor(currentValue),
+        label = "cardColor"
+    )
+
+    val scale by animateFloatAsState(
+        targetValue = when {
+            isDragging -> 1.05f
+            isDraggedOver -> 0.95f
+            else -> 1f
+        },
+        label = "cardScale"
+    )
+
+    val elevation by animateFloatAsState(
+        targetValue = if (isDragging) 16f else 8f,
+        label = "cardElevation"
+    )
+
+    val previewValue = when {
+        horizontalDragOffset > swipeThreshold && currentValue < 5 -> currentValue + 1
+        horizontalDragOffset < -swipeThreshold && currentValue > 0 -> currentValue - 1
+        else -> currentValue
+    }
+
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .scale(scale)
+            .graphicsLayer(
+                translationX = horizontalDragOffset,
+                translationY = verticalDragOffset,
+                rotationZ = horizontalDragOffset * 0.01f,
+                alpha = if (isDragging) 0.9f else 1f
+            )
+            .pointerInput(card.id, currentValue) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        startIndex = index
+                        onDragStart()
+                    },
+                    onDragEnd = {
+                        val absHorizontalOffset = abs(horizontalDragOffset)
+                        val absVerticalOffset = abs(verticalDragOffset)
+
+                        if (isVerticalDragging) {
+                            // Handle reordering
+                            val draggedDistance = verticalDragOffset
+                            val cardHeight = 120.dp.toPx() // Approximate card height
+                            val positionsToMove = (draggedDistance / cardHeight).toInt()
+                            val targetIndex = (startIndex + positionsToMove).coerceIn(0, 10) // Adjust max as needed
+
+                            if (targetIndex != startIndex) {
+                                onReorder(startIndex, targetIndex)
+                            }
+                        } else if (!disableHorizontalDrag && isHorizontalDragging) {
+                            // Handle value change
+                            val latestValue = getCurrentValue()
+
+                            if (absHorizontalOffset > swipeThreshold) {
+                                val newValue = when {
+                                    horizontalDragOffset > 0 && latestValue < 5 -> latestValue + 1
+                                    horizontalDragOffset < 0 && latestValue > 0 -> latestValue - 1
+                                    else -> latestValue
+                                }
+
+                                if (newValue != latestValue) {
+                                    onValueChanged(newValue)
+                                }
+                            }
+                        }
+
+                        // Reset states
+                        horizontalDragOffset = 0f
+                        verticalDragOffset = 0f
+                        isHorizontalDragging = false
+                        isVerticalDragging = false
+                        onDragEnd()
+                    }
+                ) { change, dragAmount ->
+                    change.consume()
+
+                    // Determine drag direction based on initial movement
+                    if (!isHorizontalDragging && !isVerticalDragging) {
+                        if (abs(dragAmount.x) > abs(dragAmount.y)) {
+                            isHorizontalDragging = true
+                        } else {
+                            isVerticalDragging = true
+                            onDragOver()
+                        }
+                    }
+
+                    if (isHorizontalDragging) {
+                        val currentVal = getCurrentValue()
+                        val newOffset = horizontalDragOffset + dragAmount.x
+
+                        horizontalDragOffset = when {
+                            newOffset > 0 && currentVal >= 5 -> newOffset * 0.2f
+                            newOffset < 0 && currentVal <= 0 -> newOffset * 0.2f
+                            else -> newOffset.coerceIn(-200f, 200f)
+                        }
+                    } else if (isVerticalDragging) {
+                        verticalDragOffset += dragAmount.y
+                    }
+                }
+            }
+            .clickable(enabled = !isHorizontalDragging && !isVerticalDragging && abs(horizontalDragOffset) < 10f && abs(verticalDragOffset) < 10f) {
+                onCardClick()
+            },
+        colors = CardDefaults.cardColors(
+            containerColor = when {
+                isDraggedOver -> animatedColor.copy(alpha = 0.7f)
+                isHorizontalDragging && previewValue != currentValue -> getCardColor(previewValue).copy(alpha = 0.9f)
+                else -> animatedColor
+            }
+        ),
+
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 8.dp) // Add spacing to ensure child content isn't clipped
+        )
+        {
+            // Checkbox aligned left-middle
+            if (disableHorizontalDrag) {
+                Checkbox(
+                    checked = card.check,
+                    onCheckedChange = { onCheckChanged(it) },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 8.dp)
+                )
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp)
+            ) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = card.name,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+
+
+
+
+                    }
+
+                    var expanded by remember { mutableStateOf(false) }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()  // Take up full height
+                            .wrapContentWidth(), // Optional: keeps the width tight to content
+                        contentAlignment = Alignment.Center // Align content vertically and horizontally
+                    ) {
+                    Row(
+
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        // Small Timer Button
+                        Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                            IconButton(
+                                onClick = { showTimerPopup = true },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color(0xFFC8E6C9), shape = CircleShape)
+                            ) {
+                                Text("⏱", fontSize = 14.sp)
+                            }
+
+                            if (showTimerPopup) {
+                                TimerPopup(
+                                    initialTime = card.timerValue,
+                                    onDismiss = { updatedTime ->
+                                        onEdit(card.copy(timerValue = updatedTime))
+                                        showTimerPopup = false
+                                    }
+                                )
+                            }
+                        }
+
+                        // Small Counter Button
+                        Box(modifier = Modifier.size(36.dp), contentAlignment = Alignment.Center) {
+                            IconButton(
+                                onClick = { showPopup = true },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color(0xFFBBDEFB), shape = CircleShape)
+                            ) {
+                                Text("🔢", fontSize = 14.sp)
+                            }
+
+                            if (showPopup) {
+                                CounterPopup(
+                                    initialValue = currentValue,
+                                    onDismiss = { updatedValue ->
+                                        onValueChanged(updatedValue)
+                                        showPopup = false
+                                    }
+                                )
+                            }
+                        }
+
+                        // Small Dropdown Menu Icon
+                        Box {
+                            IconButton(
+                                onClick = { expanded = true },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.MoreVert,
+                                    contentDescription = "More Options",
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = expanded,
+                                onDismissRequest = { expanded = false }
+                            ) {
+
+                                DropdownMenuItem(
+                                    onClick = { },
+                                    text = {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .background(
+                                                    if (previewValue > 2) Color.White.copy(alpha = 0.2f)
+                                                    else Color.Black.copy(alpha = 0.1f),
+                                                    CircleShape
+                                                ),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = previewValue.toString(),
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.Black
+                                            )
+                                        }
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    onClick = {
+                                        showEditDialog = true
+                                        expanded = false
+                                    },
+                                    enabled = !isHorizontalDragging && !isVerticalDragging,
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Edit, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Edit", fontSize = 12.sp)
+                                        }
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    onClick = {
+                                        onDeleteRequest()
+                                        expanded = false
+                                    },
+                                    enabled = !isHorizontalDragging && !isVerticalDragging,
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Black, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Delete", fontSize = 12.sp)
+                                        }
+                                    }
+                                )
+
+                                DropdownMenuItem(
+                                    onClick = {
+                                        onDisableHorizontalDragChanged(!disableHorizontalDrag)
+                                        expanded = false
+                                    },
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Checkbox(
+                                                checked = disableHorizontalDrag,
+                                                onCheckedChange = { newValue ->
+                                                    onDisableHorizontalDragChanged(newValue)
+                                                },
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Disable Drag", fontSize = 12.sp)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }}
+
+
+                }
+
+
+                Column {
+                    Text(
+                        text = card.description
+                            .replace("\n", " ")
+                            .replace("\t", " ")
+                            .replace(Regex("\\s+"), " ")
+                            .trim()
+                            .take(50) + if (card.description.length > 50) "..." else "",
+                        fontSize = 10.sp,
+                        color = Color.Black
+                    )
+                }
+            }
+        }
+        // Horizontal drag indicators
+        if (!disableHorizontalDrag && isHorizontalDragging && abs(horizontalDragOffset) > swipeThreshold / 2) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(16.dp)
+            ) {
+                if (horizontalDragOffset < 0 && currentValue > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .size(35.dp)
+                            .background(
+                                if (abs(horizontalDragOffset) > swipeThreshold) Color.Red else Color.Red.copy(alpha = 0.5f),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${currentValue - 1}",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                if (horizontalDragOffset > 0 && currentValue < 5) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .size(35.dp)
+                            .background(
+                                if (abs(horizontalDragOffset) > swipeThreshold) Color.Green else Color.Green.copy(alpha = 0.5f),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "${currentValue + 1}",
+                            color = Color.White,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+        }
+
+        // Vertical drag indicator
+        if (isVerticalDragging) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.1f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .background(
+                            Color.Blue.copy(alpha = 0.8f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(8.dp)
+                ) {
+                    Text(
+                        text = "⇕ Reordering",
+                        color = Color.White,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+
+    if (showEditDialog) {
+        AddEditCardDialog(
+            card = card,
+            onDismiss = { showEditDialog = false },
+            onSave = { name, description, youtubeUrl ->
+                onEdit(card.copy(name = name, description = description, youtubeUrl = youtubeUrl))
+                showEditDialog = false
+            }
+        )
+    }
+
+
+}
+
+
 
 @Composable
 fun LoginPromptScreen(
@@ -768,733 +1810,6 @@ fun LoginPromptScreen(
         }
     }
 }
-@Composable
-fun CardListManager() {
-    val context = LocalContext.current
-    val repository = remember { CardRepository(context) }
-    val scope = rememberCoroutineScope()
-    val notificationManager = remember { CardNotificationManager(context) }
-    var cards by remember { mutableStateOf(listOf<CardItem>()) }
-    var showAddDialog by remember { mutableStateOf(false) }
-    var selectedCard by remember { mutableStateOf<CardItem?>(null) }
-    var showDetailDialog by remember { mutableStateOf(false) }
-    var cardToDelete by remember { mutableStateOf<CardItem?>(null) }
-    var showDeleteDialog by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
-    var showConfirmDialog by remember { mutableStateOf(false) }
-    var isOperationInProgress by remember { mutableStateOf(false) }
-    var draggedCard by remember { mutableStateOf<CardItem?>(null) }
-    var draggedOverIndex by remember { mutableIntStateOf(-1) }
-    var isNotificationEnabled by remember { mutableStateOf(false) }
-    var currentUserEmail by remember { mutableStateOf<String?>(null) }
-    var showLoginPrompt by remember { mutableStateOf(false) }
-
-    // Check user authentication on startup
-    LaunchedEffect(Unit) {
-        currentUserEmail = UserAuthHelper.getCurrentUserEmail()
-
-        if (currentUserEmail == null) {
-            showLoginPrompt = true
-            isLoading = false
-        } else {
-            // Load cards and notifications after confirming user is authenticated
-            try {
-                isNotificationEnabled = notificationManager.isNotificationScheduled()
-                cards = repository.loadCards().sortedBy { it.priority }
-            } catch (e: Exception) {
-                println("Failed to load user data: ${e.message}")
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    // Load data when user email changes (after login)
-    LaunchedEffect(currentUserEmail) {
-        if (currentUserEmail != null && !showLoginPrompt) {
-            try {
-                isLoading = true
-                isNotificationEnabled = notificationManager.isNotificationScheduled()
-                cards = repository.loadCards().sortedBy { it.priority }
-            } catch (e: Exception) {
-                println("Failed to load user data after login: ${e.message}")
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    // Auto-save function for value changes
-    fun saveCardValue(updatedCard: CardItem) {
-        if (!isOperationInProgress) {
-            scope.launch {
-                isOperationInProgress = true
-                val success = repository.updateCard(updatedCard)
-                if (!success) {
-                    // Handle error - maybe show a snackbar
-                    println("Failed to save card value to Firestore")
-                }
-                isOperationInProgress = false
-            }
-        }
-    }
-
-    // Save cards whenever the list changes (but don't save on initial load)
-    LaunchedEffect(cards) {
-        if (!isLoading && cards.isNotEmpty() && currentUserEmail != null) {
-            scope.launch {
-                repository.saveCards(cards)
-            }
-        }
-    }
-
-    if (showLoginPrompt) {
-        LoginPromptScreen(
-            onLoginSuccess = { email ->
-                currentUserEmail = email
-                showLoginPrompt = false
-                // Don't manually set isLoading here - let LaunchedEffect handle it
-            },
-            onLoginRequired = {
-                // Handle login required - navigate to login screen
-                // This depends on your navigation setup
-                println("User needs to login")
-            }
-        )
-        return
-    }
-
-    if (isLoading) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                CircularProgressIndicator(color = Color(0xFF6200EE))
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    text = "Loading your cards...",
-                    color = Color.Gray
-                )
-                currentUserEmail?.let { email ->
-                    Text(
-                        text = "Signed in as: $email",
-                        fontSize = 12.sp,
-                        color = Color.Gray
-                    )
-                }
-            }
-        }
-        return
-    }
-
-    fun reorderCards(fromIndex: Int, toIndex: Int) {
-        if (fromIndex == toIndex || currentUserEmail == null) return
-
-        scope.launch {
-            val reorderedCards = cards.toMutableList()
-            val draggedCard = reorderedCards.removeAt(fromIndex)
-            reorderedCards.add(toIndex, draggedCard)
-
-            // Update local state immediately
-            cards = reorderedCards
-
-            // Save to Firebase and SharedPreferences
-            val success = repository.updateCardPriorities(reorderedCards)
-            if (!success) {
-                println("Failed to save card order")
-                // Optionally revert the order on failure
-                cards = repository.loadCards().sortedBy { it.priority }
-            }
-        }
-    }
-
-    // Use Box with proper positioning instead of Column
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
-        // Main content area
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp)
-                .padding(bottom = 80.dp) // Add bottom padding for buttons
-        ) {
-            // Header with title and buttons (if you have any)
-
-            // Cards List or Empty State
-            if (cards.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            "No cards yet!",
-                            fontSize = 18.sp,
-                            color = Color.Gray
-                        )
-                        Text(
-                            "Tap + to add your first card",
-                            fontSize = 14.sp,
-                            color = Color.Gray
-                        )
-                    }
-                }
-            } else {
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(cards.size) { index ->
-                        val card = cards[index]
-
-                        DraggableSwipeableCard(
-                            card = card,
-                            index = index,
-                            getCurrentValue = { cards.find { it.id == card.id }?.value ?: card.value },
-                            onValueChanged = { newValue ->
-                                val updatedCard = card.copy(value = newValue)
-                                cards = cards.map { c ->
-                                    if (c.id == card.id) updatedCard else c
-                                }
-                                saveCardValue(updatedCard)
-                            },
-                            onCardClick = {
-                                selectedCard = card
-                                showDetailDialog = true
-                            },
-                            onDeleteRequest = {
-                                cardToDelete = card
-                                showDeleteDialog = true
-                            },
-                            onEdit = { updatedCard ->
-                                cards = cards.map { c ->
-                                    if (c.id == updatedCard.id) updatedCard else c
-                                }
-                                scope.launch {
-                                    repository.updateCard(updatedCard)
-                                }
-                            },
-                            onDragStart = { draggedCard = card },
-                            onDragEnd = {
-                                draggedCard = null
-                                draggedOverIndex = -1
-                            },
-                            onDragOver = { draggedOverIndex = index },
-                            onReorder = { fromIndex, toIndex ->
-                                reorderCards(fromIndex, toIndex)
-                            },
-                            isDraggedOver = draggedOverIndex == index,
-                            isDragging = draggedCard?.id == card.id
-                        )
-                    }
-                }
-            }
-        }
-
-        // Fixed positioned buttons at bottom right
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(16.dp)
-        ) {
-            IconButton(
-                onClick = {
-                    if (isNotificationEnabled) {
-                        notificationManager.stopNotifications()
-                        isNotificationEnabled = false
-                    } else {
-                        notificationManager.startNotifications()
-                        isNotificationEnabled = true
-                    }
-                },
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        if (isNotificationEnabled) Color(0xFF4CAF50) else Color(0xFF757575),
-                        CircleShape
-                    )
-            ) {
-                Icon(
-                    imageVector = if (isNotificationEnabled)
-                        Icons.Default.Notifications
-                    else
-                        Icons.Default.NotificationsOff,
-                    contentDescription = if (isNotificationEnabled) "Stop Notifications" else "Start Notifications",
-                    tint = Color.White
-                )
-            }
-            // Reset Button
-            IconButton(
-                onClick = { showConfirmDialog = true },
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        Color(0xFF6200EE),
-                        CircleShape
-                    )
-            ) {
-                Icon(
-                    Icons.Default.Refresh,
-                    contentDescription = "Reset",
-                    tint = Color.White
-                )
-            }
-
-            // Add Button
-            FloatingActionButton(
-                onClick = { showAddDialog = true },
-                containerColor = Color(0xFF03DAC6),
-                modifier = Modifier.size(48.dp)
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = "Add Card",
-                    tint = Color.White
-                )
-            }
-        }
-    }
-
-    // Reset Confirmation Dialog
-    if (showConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = { Text("Reset All Cards") },
-            text = { Text("Are you sure you want to reset all card values to 0?") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        scope.launch {
-                            isOperationInProgress = true
-                            val success = repository.resetAllCardValues()
-                            if (success) {
-                                cards = cards.map { it.copy(value = 0) }
-                            } else {
-                                // Handle error
-                                println("Failed to reset card values")
-                            }
-                            isOperationInProgress = false
-                        }
-                        showConfirmDialog = false
-                    }
-                ) { Text("Reset") }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showConfirmDialog = false }
-                ) { Text("Cancel") }
-            }
-        )
-    }
-
-    // Add Card Dialog
-    if (showAddDialog) {
-        AddEditCardDialog(
-            card = null,
-            onDismiss = { showAddDialog = false },
-            onSave = { name, description, youtubeUrl ->
-                scope.launch {
-                    val newCard = CardItem(
-                        name = name,
-                        description = description,
-                        youtubeUrl = youtubeUrl,
-                        priority = cards.size
-                    )
-                    val success = repository.createCard(newCard)
-                    if (success) {
-                        cards = cards + newCard
-                    } else {
-                        println("Failed to create card")
-                    }
-                }
-                showAddDialog = false
-            }
-        )
-    }
-
-    // Card Detail Dialog
-    if (showDetailDialog && selectedCard != null) {
-        val currentSelectedCard = cards.find { it.id == selectedCard!!.id } ?: selectedCard!!
-        CardDetailDialog(
-            card = currentSelectedCard,
-            onDismiss = { showDetailDialog = false },
-            onEdit = { card ->
-                selectedCard = card
-                showDetailDialog = false
-            }
-        )
-    }
-
-    // Delete Confirmation Dialog
-    if (showDeleteDialog && cardToDelete != null) {
-        DeleteConfirmationDialog(
-            cardName = cardToDelete!!.name,
-            onConfirm = {
-                scope.launch {
-                    val success = repository.deleteCard(cardToDelete!!.id)
-                    if (success) {
-                        cards = cards.filter { it.id != cardToDelete!!.id }
-                    } else {
-                        // Handle error
-                        println("Failed to delete card")
-                    }
-                    cardToDelete = null
-                    showDeleteDialog = false
-                }
-            },
-            onDismiss = {
-                cardToDelete = null
-                showDeleteDialog = false
-            }
-        )
-    }
-}
-
-// Alternative approach: Modify the SwipeableCard to get current value dynamically
-@Composable
-fun DraggableSwipeableCard(
-    card: CardItem,
-    index: Int,
-    getCurrentValue: () -> Int,
-    onValueChanged: (Int) -> Unit,
-    onCardClick: () -> Unit,
-    onDeleteRequest: () -> Unit,
-    onEdit: (CardItem) -> Unit,
-    onDragStart: () -> Unit,
-    onDragEnd: () -> Unit,
-    onDragOver: () -> Unit,
-    onReorder: (Int, Int) -> Unit,
-    isDraggedOver: Boolean,
-    isDragging: Boolean
-) {
-    var horizontalDragOffset by remember { mutableFloatStateOf(0f) }
-    var verticalDragOffset by remember { mutableFloatStateOf(0f) }
-    var showEditDialog by remember { mutableStateOf(false) }
-    var isHorizontalDragging by remember { mutableStateOf(false) }
-    var isVerticalDragging by remember { mutableStateOf(false) }
-    var startIndex by remember { mutableIntStateOf(-1) }
-
-    val density = LocalDensity.current
-    val swipeThreshold = with(density) { 40.dp.toPx() }
-    val reorderThreshold = with(density) { 60.dp.toPx() }
-
-    val currentValue = getCurrentValue()
-    val cardColor = getCardColor(currentValue)
-    val animatedColor by animateColorAsState(
-        targetValue = cardColor,
-        label = "cardColor"
-    )
-
-    val scale by animateFloatAsState(
-        targetValue = when {
-            isDragging -> 1.05f
-            isDraggedOver -> 0.95f
-            else -> 1f
-        },
-        label = "cardScale"
-    )
-
-    val elevation by animateFloatAsState(
-        targetValue = if (isDragging) 16f else 8f,
-        label = "cardElevation"
-    )
-
-    val previewValue = when {
-        horizontalDragOffset > swipeThreshold && currentValue < 5 -> currentValue + 1
-        horizontalDragOffset < -swipeThreshold && currentValue > 0 -> currentValue - 1
-        else -> currentValue
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .scale(scale)
-            .graphicsLayer(
-                translationX = horizontalDragOffset,
-                translationY = verticalDragOffset,
-                rotationZ = horizontalDragOffset * 0.01f,
-                alpha = if (isDragging) 0.9f else 1f
-            )
-            .pointerInput(card.id, currentValue) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        startIndex = index
-                        onDragStart()
-                    },
-                    onDragEnd = {
-                        val absHorizontalOffset = abs(horizontalDragOffset)
-                        val absVerticalOffset = abs(verticalDragOffset)
-
-                        if (isVerticalDragging) {
-                            // Handle reordering
-                            val draggedDistance = verticalDragOffset
-                            val cardHeight = 120.dp.toPx() // Approximate card height
-                            val positionsToMove = (draggedDistance / cardHeight).toInt()
-                            val targetIndex = (startIndex + positionsToMove).coerceIn(0, 10) // Adjust max as needed
-
-                            if (targetIndex != startIndex) {
-                                onReorder(startIndex, targetIndex)
-                            }
-                        } else if (isHorizontalDragging) {
-                            // Handle value change
-                            val latestValue = getCurrentValue()
-
-                            if (absHorizontalOffset > swipeThreshold) {
-                                val newValue = when {
-                                    horizontalDragOffset > 0 && latestValue < 5 -> latestValue + 1
-                                    horizontalDragOffset < 0 && latestValue > 0 -> latestValue - 1
-                                    else -> latestValue
-                                }
-
-                                if (newValue != latestValue) {
-                                    onValueChanged(newValue)
-                                }
-                            }
-                        }
-
-                        // Reset states
-                        horizontalDragOffset = 0f
-                        verticalDragOffset = 0f
-                        isHorizontalDragging = false
-                        isVerticalDragging = false
-                        onDragEnd()
-                    }
-                ) { change, dragAmount ->
-                    change.consume()
-
-                    // Determine drag direction based on initial movement
-                    if (!isHorizontalDragging && !isVerticalDragging) {
-                        if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                            isHorizontalDragging = true
-                        } else {
-                            isVerticalDragging = true
-                            onDragOver()
-                        }
-                    }
-
-                    if (isHorizontalDragging) {
-                        val currentVal = getCurrentValue()
-                        val newOffset = horizontalDragOffset + dragAmount.x
-
-                        horizontalDragOffset = when {
-                            newOffset > 0 && currentVal >= 5 -> newOffset * 0.2f
-                            newOffset < 0 && currentVal <= 0 -> newOffset * 0.2f
-                            else -> newOffset.coerceIn(-200f, 200f)
-                        }
-                    } else if (isVerticalDragging) {
-                        verticalDragOffset += dragAmount.y
-                    }
-                }
-            }
-            .clickable(enabled = !isHorizontalDragging && !isVerticalDragging && abs(horizontalDragOffset) < 10f && abs(verticalDragOffset) < 10f) {
-                onCardClick()
-            },
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isDraggedOver -> animatedColor.copy(alpha = 0.7f)
-                isHorizontalDragging && previewValue != currentValue -> getCardColor(previewValue).copy(alpha = 0.9f)
-                else -> animatedColor
-            }
-        ),
-
-    ) {
-        // Your existing card content here - keep all the existing UI code from SwipeableCard
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(start = 20.dp)
-        ) {
-            // First Row: Card Name + Icon Buttons
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = card.name,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Black,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(30.dp)
-                            .background(
-                                if (previewValue > 2) Color.White.copy(alpha = 0.2f) else Color.Black.copy(alpha = 0.1f),
-                                CircleShape
-                            )
-                            .graphicsLayer {
-                                scaleX = if (isHorizontalDragging) 1.2f else 1f
-                                scaleY = if (isHorizontalDragging) 1.2f else 1f
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = previewValue.toString(),
-                            fontSize = 30.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.Black,
-                        )
-                    }
-
-                    IconButton(
-                        onClick = { showEditDialog = true },
-                        enabled = !isHorizontalDragging && !isVerticalDragging
-                    ) {
-                        Icon(
-                            Icons.Default.Edit,
-                            contentDescription = "Edit",
-                            tint = if (previewValue > 2) Color.White else Color.Gray
-                        )
-                    }
-
-                    IconButton(
-                        onClick = onDeleteRequest,
-                        enabled = !isHorizontalDragging && !isVerticalDragging
-                    ) {
-                        Icon(
-                            Icons.Default.Delete,
-                            contentDescription = "Delete",
-                            tint = if (previewValue > 2) Color.White else Color.Red
-                        )
-                    }
-                }
-            }
-
-            // Second Row: Description
-            Column {
-                Text(
-                    text = card.description
-                        .replace("\n", " ")
-                        .replace("\t", " ")
-                        .replace(Regex("\\s+"), " ")
-                        .trim()
-                        .take(50) + if (card.description.length > 50) "..." else "",
-                    fontSize = 10.sp,
-                    color = if (previewValue > 2) Color.White.copy(alpha = 0.8f) else Color.Gray
-                )
-            }
-        }
-
-        // Horizontal drag indicators
-        if (isHorizontalDragging && abs(horizontalDragOffset) > swipeThreshold / 2) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(16.dp)
-            ) {
-                if (horizontalDragOffset < 0 && currentValue > 0) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .size(35.dp)
-                            .background(
-                                if (abs(horizontalDragOffset) > swipeThreshold) Color.Red else Color.Red.copy(alpha = 0.5f),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${currentValue - 1}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                if (horizontalDragOffset > 0 && currentValue < 5) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .size(35.dp)
-                            .background(
-                                if (abs(horizontalDragOffset) > swipeThreshold) Color.Green else Color.Green.copy(alpha = 0.5f),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${currentValue + 1}",
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-            }
-        }
-
-        // Vertical drag indicator
-        if (isVerticalDragging) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.1f))
-            ) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .background(
-                            Color.Blue.copy(alpha = 0.8f),
-                            RoundedCornerShape(8.dp)
-                        )
-                        .padding(8.dp)
-                ) {
-                    Text(
-                        text = "⇕ Reordering",
-                        color = Color.White,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-        }
-    }
-
-    if (showEditDialog) {
-        AddEditCardDialog(
-            card = card,
-            onDismiss = { showEditDialog = false },
-            onSave = { name, description, _ ->
-                onEdit(card.copy(name = name, description = description))
-                showEditDialog = false
-            }
-        )
-    }
-
-
-}
-
-// Then in your CardListManager, call it like this:
-/*
-SwipeableCard(
-    card = currentCard,
-    getCurrentValue = { cards.find { it.id == currentCard.id }?.value ?: currentCard.value },
-    onValueChanged = { newValue ->
-        cards = cards.map { c ->
-            if (c.id == currentCard.id) c.copy(value = newValue) else c
-        }
-    },
-    // ... other parameters
-)
-*/
-// Reset animation and drag offset
-
-
 @Composable
 fun DeleteConfirmationDialog(
     cardName: String,
@@ -1659,13 +1974,14 @@ fun AddEditCardDialog(
     }
 }
 
-// Updated CardDetailDialog with YouTube video embedding
-// Updated CardDetailDialog with YouTube video embedding
 @Composable
 fun CardDetailDialog(
     card: CardItem,
     onDismiss: () -> Unit,
-    onEdit: (CardItem) -> Unit
+    onEdit: (CardItem) -> Unit,
+    disableHorizontalDrag: Boolean
+
+
 ) {
     val videoId = remember(card.youtubeUrl) {
         if (card.youtubeUrl.isNotEmpty()) extractYouTubeVideoId(card.youtubeUrl) else null
@@ -1678,7 +1994,10 @@ fun CardDetailDialog(
                 .height(400.dp)  // Allow more height for video
                 .padding(16.dp),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = getCardColor(card.value))
+            colors = CardDefaults.cardColors(
+                containerColor = if (disableHorizontalDrag) Color.White else getCardColor(card.value)
+            )
+
         ) {
             LazyColumn(
                 modifier = Modifier.padding(24.dp),
@@ -1813,9 +2132,8 @@ fun CardDetailDialog(
                         onClick = onDismiss,
                         modifier = Modifier.fillMaxWidth(),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (card.value > 2) Color.Black else Color(0xFF6200EE),
-                            contentColor = if (card.value > 2) Color.Black else Color.Black
-                        )
+                            containerColor = MaterialTheme.colorScheme.background,
+                            contentColor = MaterialTheme.colorScheme.onBackground    )
                     ) {
                         Text("Close")
                     }

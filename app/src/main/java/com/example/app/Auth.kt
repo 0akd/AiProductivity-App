@@ -2,7 +2,7 @@ package com.arjundubey.app
 
 import android.app.Activity
 import android.content.Context
-import android.provider.Settings.Global.getString
+
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -26,13 +26,24 @@ import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 
+import androidx.compose.ui.platform.LocalLifecycleOwner
+
+
+import com.google.firebase.auth.FirebaseUser
+
+import com.google.firebase.auth.ktx.auth
+import com.google.firebase.ktx.Firebase
+
+// Logging
+import android.util.Log
+
 @Composable
 fun AuthScreen(
     onLoginSuccess: () -> Unit = {} // Make it optional with default empty implementation
 ) {
     val context = LocalContext.current
     val activity = context as Activity
-    val auth = remember { FirebaseAuth.getInstance() }
+
     val firestore = remember { FirebaseFirestore.getInstance() }
 
     var email by remember { mutableStateOf("") }
@@ -41,6 +52,37 @@ fun AuthScreen(
     var loading by remember { mutableStateOf(false) }
     var isLoggedIn by remember { mutableStateOf(false) }
     var userEmail by remember { mutableStateOf("") }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+        .requestIdToken(context.getString(R.string.default_web_client_id)) // from google-services.json
+        .requestEmail()
+        .build()
+
+    val googleSignInClient = GoogleSignIn.getClient(context, gso)
+
+    val auth = Firebase.auth
+    var user by remember { mutableStateOf<FirebaseUser?>(auth.currentUser) }
+
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            val credential = GoogleAuthProvider.getCredential(account.idToken, null)
+
+            auth.signInWithCredential(credential)
+                .addOnCompleteListener { task ->
+                    if (task.isSuccessful) {
+                        user = auth.currentUser
+                    } else {
+                        Log.e("Auth", "Firebase sign in failed", task.exception)
+                    }
+                }
+        } catch (e: ApiException) {
+            Log.e("GoogleSignIn", "Google sign-in failed", e)
+        }
+    }
 
     // Check if user is already logged in
     LaunchedEffect(Unit) {
@@ -75,34 +117,7 @@ fun AuthScreen(
         return
     }
 
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        loading = true
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            val credential = GoogleAuthProvider.getCredential(account.idToken, null)
-            auth.signInWithCredential(credential)
-                .addOnCompleteListener { task ->
-                    loading = false
-                    if (task.isSuccessful) {
-                        saveUserToFirestore(account, firestore, context) {
-                            isLoggedIn = true
-                            userEmail = account.email ?: ""
-                            onLoginSuccess()
-                        }
-                        Toast.makeText(context, "Google Sign-In Success", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Google Sign-In Failed: ${task.exception?.localizedMessage}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-        } catch (e: Exception) {
-            loading = false
-            e.printStackTrace()
-            Toast.makeText(context, "Google Sign-In error: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
+
 
     Column(
         modifier = Modifier
@@ -113,8 +128,11 @@ fun AuthScreen(
     ) {
         Text(
             text = if (isLoginMode) "Login" else "Register",
-            style = MaterialTheme.typography.headlineMedium
+            style = MaterialTheme.typography.headlineMedium.copy(
+                color = MaterialTheme.colorScheme.onBackground // or any color you want
+            )
         )
+
 
         Spacer(modifier = Modifier.height(20.dp))
 
@@ -190,29 +208,17 @@ fun AuthScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-//        OutlinedButton(
-//            onClick = {
-//                loading = true
-//                val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-//                    .requestIdToken("101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com")
-//                    .requestEmail()
-//                    .build()
-//                val client = GoogleSignIn.getClient(activity, gso)
-//                // Sign out any existing account first to force account picker
-//                client.signOut().addOnCompleteListener {
-//                    launcher.launch(client.signInIntent)
-//                }
-//            },
-//            modifier = Modifier.fillMaxWidth(),
-//            enabled = !loading
-//        ) {
-//            Text("Continue with Google")
-//        }
-
+        if (user == null) {
+            Button(onClick = {
+                val signInIntent = googleSignInClient.signInIntent
+                launcher.launch(signInIntent)
+            }) {
+                Text("Sign in with Google")
+            }
+        }
         TextButton(onClick = { isLoginMode = !isLoginMode }) {
             Text(if (isLoginMode) "Don't have an account? Register" else "Already have an account? Login")
         }
-
         if (loading) {
             Spacer(modifier = Modifier.height(16.dp))
             CircularProgressIndicator()

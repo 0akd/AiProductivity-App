@@ -15,8 +15,8 @@ android {
         applicationId = "com.arjundubey.app"
         minSdk = 24
         targetSdk = 36
-        versionCode =2
-        versionName = "1.1"
+        versionCode =3
+        versionName = "1.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -103,7 +103,7 @@ dependencies {
     implementation("com.google.firebase:firebase-auth-ktx:22.3.1")
     implementation("com.google.firebase:firebase-firestore-ktx:24.11.1")
     implementation("com.google.android.gms:play-services-auth:21.0.0")
-
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.3")
     implementation("androidx.activity:activity-compose")
     implementation("androidx.navigation:navigation-compose")
 
