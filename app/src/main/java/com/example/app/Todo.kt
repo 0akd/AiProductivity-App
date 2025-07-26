@@ -1403,12 +1403,14 @@ fun DraggableSwipeableCard(
                                     startIndex = index
                                     onDragStart()
 
-                                    // Determine drag direction based on total accumulated movement
-                                    if (abs(totalDrag.x) > abs(totalDrag.y)) {
-                                        isHorizontalDragging = true
-                                    } else {
-                                        isVerticalDragging = true
-                                        onDragOver()
+                                    // Determine drag direction based on initial movement
+                                    if (!isHorizontalDragging && !isVerticalDragging) {
+                                        if (abs(totalDrag.x) > abs(totalDrag.y)) {
+                                            isHorizontalDragging = true
+                                        } else {
+                                            isVerticalDragging = true
+                                            onDragOver()
+                                        }
                                     }
                                 }
 
