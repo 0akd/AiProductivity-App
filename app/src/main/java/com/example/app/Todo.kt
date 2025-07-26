@@ -62,6 +62,7 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.MoreVert
@@ -1299,7 +1300,7 @@ fun DraggableSwipeableCard(
     val currentValue = getCurrentValue()
     val cardColor = getCardColor(currentValue)
     val animatedColor by animateColorAsState(
-        targetValue = if (disableHorizontalDrag) MaterialTheme.colorScheme.onBackground else getCardColor(currentValue),
+        targetValue = if (disableHorizontalDrag) MaterialTheme.colorScheme.background else getCardColor(currentValue),
         label = "cardColor"
     )
 
@@ -1327,6 +1328,11 @@ fun DraggableSwipeableCard(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .border(
+                width = 2.dp,
+                color = MaterialTheme.colorScheme.onBackground,
+                shape = RoundedCornerShape(12.dp) // Match the card's shape
+            )
             .scale(scale)
             .graphicsLayer(
                 translationX = horizontalDragOffset,
@@ -1532,8 +1538,9 @@ fun DraggableSwipeableCard(
                             text = card.name,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
-                            color = Color.Black
+                            color = if (disableHorizontalDrag) MaterialTheme.colorScheme.onBackground else Color.Black
                         )
+
 
 
 
@@ -1703,7 +1710,7 @@ fun DraggableSwipeableCard(
                             .trim()
                             .take(50) + if (card.description.length > 50) "..." else "",
                         fontSize = 10.sp,
-                        color = Color.Black
+                        color = if (disableHorizontalDrag) MaterialTheme.colorScheme.onBackground else Color.Black
                     )
                 }
             }
