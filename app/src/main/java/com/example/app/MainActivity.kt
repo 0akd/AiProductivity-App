@@ -504,7 +504,7 @@ fun MainScreen(
                     val screens = if (isPremium) {
                         listOf("Home", "Tasks","Login/Signup")// "Scrape", "Premium Features", "Donate"
                     } else {
-                        listOf( "Home","Problems","Oppurtunities","Tasks","Resume","Login/Signup" )//"Buy Premium""Scrape","Donate","Leet"
+                        listOf( "Home","Problems","Oppurtunities","Tasks","Resume","Login/Signup","admin","course" )//"Buy Premium""Scrape","Donate","Leet"
                     }
 
                     screens.forEach { screen ->
@@ -595,6 +595,8 @@ fun MainScreen(
                         notificationProblemSlug = notificationProblemSlug,
                         onNotificationHandled = onNotificationHandled
                     )
+                    "admin"->AdminScreen()
+                    "course"->CardDisplayScreen()
 //                    "Buy Premium" -> PremiumScreen {
 //                        // You can do any of these:
 //                        // - Show a toast

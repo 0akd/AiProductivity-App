@@ -3,6 +3,10 @@ package com.arjundubey.app
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.ui.viewinterop.AndroidView
 import android.webkit.WebView
+import kotlinx.coroutines.*
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.runtime.*
 import com.google.firebase.auth.FirebaseAuth
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsOff
@@ -58,9 +62,11 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.ui.geometry.Offset
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.*
@@ -68,7 +74,7 @@ import kotlinx.coroutines.delay
 
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-
+import kotlin.math.abs
 data class CardItem(
     val id: String = UUID.randomUUID().toString(),
     val name: String,
@@ -852,7 +858,7 @@ fun CardListManager() {
         }
         return
     }
-
+    var refreshTrigger by remember { mutableStateOf(0) }
     // Main UI with proper Box layout
     Box(
         modifier = Modifier
@@ -888,14 +894,13 @@ fun CardListManager() {
                 }
             } else {
                 LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(50.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(
                         count = cards.size,
-                        key = { index -> cards[index].id } // FIXED: Use count parameter and proper key function
+                        key = { index -> "${cards[index].id}_$refreshTrigger" } // Include refresh trigger in key
                     ) { index ->
-                        val card = cards[index] // FIXED: Get card by index
-
+                        val card = cards[index]
                         DraggableSwipeableCard(
                             card = card,
                             index = index,
@@ -956,6 +961,7 @@ fun CardListManager() {
                                 saveCardUpdate(card.id) { currentCard ->
                                     currentCard.copy(disableHorizontalDrag = isDisabled)
                                 }
+                                refreshTrigger++
                             }
                         )
                     }
@@ -1284,6 +1290,11 @@ fun DraggableSwipeableCard(
     val density = LocalDensity.current
     val swipeThreshold = with(density) { 40.dp.toPx() }
     val reorderThreshold = with(density) { 60.dp.toPx() }
+    var dragJob: Job? by remember { mutableStateOf(null) }
+    var isDragEnabled by remember { mutableStateOf(false) }
+    var pressStartTime by remember { mutableStateOf(0L) }
+    var pressStartPosition by remember { mutableStateOf<Offset>(Offset.Zero) }
+
 
     val currentValue = getCurrentValue()
     val cardColor = getCardColor(currentValue)
@@ -1324,73 +1335,152 @@ fun DraggableSwipeableCard(
                 alpha = if (isDragging) 0.9f else 1f
             )
             .pointerInput(card.id, currentValue) {
-                detectDragGestures(
-                    onDragStart = { offset ->
-                        startIndex = index
-                        onDragStart()
-                    },
-                    onDragEnd = {
-                        val absHorizontalOffset = abs(horizontalDragOffset)
-                        val absVerticalOffset = abs(verticalDragOffset)
+                detectTapGestures(
+                    onPress = { offset ->
+                        // Cancel any existing drag job
+                        dragJob?.cancel()
+                        isDragEnabled = false
 
-                        if (isVerticalDragging) {
-                            // Handle reordering
-                            val draggedDistance = verticalDragOffset
-                            val cardHeight = 120.dp.toPx() // Approximate card height
-                            val positionsToMove = (draggedDistance / cardHeight).toInt()
-                            val targetIndex = (startIndex + positionsToMove).coerceIn(0, 10) // Adjust max as needed
-
-                            if (targetIndex != startIndex) {
-                                onReorder(startIndex, targetIndex)
-                            }
-                        } else if (!disableHorizontalDrag && isHorizontalDragging) {
-                            // Handle value change
-                            val latestValue = getCurrentValue()
-
-                            if (absHorizontalOffset > swipeThreshold) {
-                                val newValue = when {
-                                    horizontalDragOffset > 0 && latestValue < 5 -> latestValue + 1
-                                    horizontalDragOffset < 0 && latestValue > 0 -> latestValue - 1
-                                    else -> latestValue
-                                }
-
-                                if (newValue != latestValue) {
-                                    onValueChanged(newValue)
-                                }
-                            }
+                        // Start a coroutine to enable drag after 500ms
+                        dragJob = CoroutineScope(Dispatchers.Main).launch {
+                            delay(500)
+                            isDragEnabled = true
                         }
 
-                        // Reset states
-                        horizontalDragOffset = 0f
-                        verticalDragOffset = 0f
-                        isHorizontalDragging = false
-                        isVerticalDragging = false
-                        onDragEnd()
-                    }
-                ) { change, dragAmount ->
-                    change.consume()
+                        // Wait for release or drag to start
+                        val released = tryAwaitRelease()
+                        if (released) {
+                            // User released before 500ms, cancel drag enabling
+                            dragJob?.cancel()
+                            isDragEnabled = false
 
-                    // Determine drag direction based on initial movement
-                    if (!isHorizontalDragging && !isVerticalDragging) {
-                        if (abs(dragAmount.x) > abs(dragAmount.y)) {
-                            isHorizontalDragging = true
+                            // Handle as click if no significant movement occurred
+                            if (abs(horizontalDragOffset) < 10f && abs(verticalDragOffset) < 10f) {
+                                onCardClick()
+                            }
+                        }
+                    }
+                )
+            }
+            .pointerInput(card.id, currentValue) {
+                awaitPointerEventScope {
+                    while (true) {
+                        // Wait for first pointer down
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        pressStartTime = System.currentTimeMillis()
+                        pressStartPosition = down.position
+                        isDragEnabled = false
+
+                        // Start delay coroutine
+                        dragJob?.cancel()
+                        dragJob = CoroutineScope(Dispatchers.Main).launch {
+                            delay(500)
+                            isDragEnabled = true
+                        }
+
+                        var pointer = down
+                        var totalDrag = Offset.Zero
+
+                        do {
+                            val event = awaitPointerEvent()
+                            val currentPointer = event.changes.firstOrNull { it.id == pointer.id }
+
+                            if (currentPointer != null) {
+                                val currentTime = System.currentTimeMillis()
+                                val dragDelta = currentPointer.position - pointer.position
+                                totalDrag += dragDelta
+
+                                // Check if we should start dragging (after 500ms and with some movement)
+                                if (isDragEnabled && !isHorizontalDragging && !isVerticalDragging &&
+                                    (abs(totalDrag.x) > 10f || abs(totalDrag.y) > 10f)) {
+                                    // First drag movement - call onDragStart and determine direction
+                                    startIndex = index
+                                    onDragStart()
+
+                                    // Determine drag direction based on total accumulated movement
+                                    if (abs(totalDrag.x) > abs(totalDrag.y)) {
+                                        isHorizontalDragging = true
+                                    } else {
+                                        isVerticalDragging = true
+                                        onDragOver()
+                                    }
+                                }
+
+                                // Process all drag movements once dragging has started
+                                if (isDragEnabled && (isHorizontalDragging || isVerticalDragging)) {
+                                    if (isHorizontalDragging) {
+                                        val currentVal = getCurrentValue()
+                                        val newOffset = horizontalDragOffset + dragDelta.x
+
+                                        horizontalDragOffset = when {
+                                            newOffset > 0 && currentVal >= 5 -> newOffset * 0.2f
+                                            newOffset < 0 && currentVal <= 0 -> newOffset * 0.2f
+                                            else -> newOffset.coerceIn(-200f, 200f)
+                                        }
+                                    } else if (isVerticalDragging) {
+                                        verticalDragOffset += dragDelta.y
+                                    }
+
+                                    currentPointer.consume()
+                                }
+
+                                pointer = currentPointer
+                            }
+
+                        } while (event.changes.any { it.pressed })
+
+                        // Pointer released - handle end
+                        dragJob?.cancel()
+
+                        if (isHorizontalDragging || isVerticalDragging) {
+                            // Handle drag end
+                            val absHorizontalOffset = abs(horizontalDragOffset)
+                            val absVerticalOffset = abs(verticalDragOffset)
+
+                            if (isVerticalDragging) {
+                                // Handle reordering
+                                val draggedDistance = verticalDragOffset
+                                val cardHeight = 120.dp.toPx() // Approximate card height
+                                val positionsToMove = (draggedDistance / cardHeight).toInt()
+                                val targetIndex = (startIndex + positionsToMove).coerceIn(0, 10) // Adjust max as needed
+
+                                if (targetIndex != startIndex) {
+                                    onReorder(startIndex, targetIndex)
+                                }
+                            } else if (!disableHorizontalDrag && isHorizontalDragging) {
+                                // Handle value change
+                                val latestValue = getCurrentValue()
+
+                                if (absHorizontalOffset > swipeThreshold) {
+                                    val newValue = when {
+                                        horizontalDragOffset > 0 && latestValue < 5 -> latestValue + 1
+                                        horizontalDragOffset < 0 && latestValue > 0 -> latestValue - 1
+                                        else -> latestValue
+                                    }
+
+                                    if (newValue != latestValue) {
+                                        onValueChanged(newValue)
+                                    }
+                                }
+                            }
+
+                            // Reset drag states
+                            horizontalDragOffset = 0f
+                            verticalDragOffset = 0f
+                            isHorizontalDragging = false
+                            isVerticalDragging = false
+                            onDragEnd()
                         } else {
-                            isVerticalDragging = true
-                            onDragOver()
-                        }
-                    }
+                            // Handle click (no drag occurred and released before/without significant movement)
+                            val timeDiff = System.currentTimeMillis() - pressStartTime
+                            val movementDistance = (pointer.position - pressStartPosition).getDistance()
 
-                    if (isHorizontalDragging) {
-                        val currentVal = getCurrentValue()
-                        val newOffset = horizontalDragOffset + dragAmount.x
-
-                        horizontalDragOffset = when {
-                            newOffset > 0 && currentVal >= 5 -> newOffset * 0.2f
-                            newOffset < 0 && currentVal <= 0 -> newOffset * 0.2f
-                            else -> newOffset.coerceIn(-200f, 200f)
+                            if (timeDiff < 500 && movementDistance < 10f) {
+                                onCardClick()
+                            }
                         }
-                    } else if (isVerticalDragging) {
-                        verticalDragOffset += dragAmount.y
+
+                        isDragEnabled = false
                     }
                 }
             }
