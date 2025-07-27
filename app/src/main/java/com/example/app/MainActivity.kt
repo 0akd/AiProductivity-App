@@ -210,6 +210,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
         Checkout.preload(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         createNotificationChannel(this)
+        createNotificationChanne(this)
 
         // Create LeetCode notification channel
         createLeetCodeNotificationChannel(this)
@@ -504,7 +505,7 @@ fun MainScreen(
                     val screens = if (isPremium) {
                         listOf("Home", "Tasks","Login/Signup")// "Scrape", "Premium Features", "Donate"
                     } else {
-                        listOf( "Home","Problems","Oppurtunities","Tasks","Research","Resume","Login/Signup","admin","course" )//"Buy Premium""Scrape","Donate","Leet"
+                        listOf( "Home","Problems","Oppurtunities","Ex","Tasks","Research","Resume","Login/Signup","admin","course" )//"Buy Premium""Scrape","Donate","Leet"
                     }
 
                     screens.forEach { screen ->
@@ -597,7 +598,7 @@ fun MainScreen(
                     )
                     "admin"->AdminScreen()
                     "course"->CardDisplayScreen()
-
+"Ex"->ExerciseTimerScreen()
 //                    "Buy Premium" -> PremiumScreen {
 //                        // You can do any of these:
 //                        // - Show a toast

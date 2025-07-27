@@ -94,7 +94,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation("androidx.compose.foundation:foundation:1.6.0")
 
-
+    implementation("androidx.compose.runtime:runtime-livedata:1.5.4")
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
     implementation("com.razorpay:checkout:1.6.33")

@@ -124,6 +124,27 @@ enum class ResumeTab(val title: String, val icon: ImageVector) {
 }
 
 
+// First, add these data classes for profile management
+data class ProfileInfo(
+    val id: String = "",
+    val name: String = "",
+    val description: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastModified: Long = System.currentTimeMillis()
+)
+
+data class FirestoreProfileData(
+    val profileInfo: Map<String, Any> = emptyMap(),
+    val resumeData: Map<String, Any> = emptyMap(),
+    val userEmail: String = ""
+)
+
+// Add these enums for dialog states
+enum class ProfileDialogState {
+    NONE, CREATE, EDIT, DELETE
+}
+
+// Modified ResumeBuilderApp with profile management
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResumeBuilderApp() {
@@ -133,20 +154,47 @@ fun ResumeBuilderApp() {
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { ResumeRepository() }
 
+    // Profile management states
+    var profiles by remember { mutableStateOf<List<ProfileInfo>>(emptyList()) }
+    var selectedProfile by remember { mutableStateOf<ProfileInfo?>(null) }
+    var showProfileDialog by remember { mutableStateOf(ProfileDialogState.NONE) }
+    var showProfileDropdown by remember { mutableStateOf(false) }
+
     var saveStatus by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
-    // Load data on app start
+    // Load profiles on app start
     LaunchedEffect(Unit) {
         isLoading = true
-        repository.loadResumeData().fold(
-            onSuccess = { loadedData ->
-                loadedData?.let { resumeData.value = it }
+        repository.loadProfiles().fold(
+            onSuccess = { loadedProfiles ->
+                profiles = loadedProfiles
+                println("Loaded ${loadedProfiles.size} profiles: ${loadedProfiles.map { it.name }}")
+
+                // Auto-select first profile or create default if none exist
+                if (loadedProfiles.isNotEmpty()) {
+                    selectedProfile = loadedProfiles.first()
+                    println("Selected profile: ${selectedProfile?.name}")
+
+                    // Load resume data for selected profile
+                    repository.loadResumeData(selectedProfile!!.id).fold(
+                        onSuccess = { loadedData ->
+                            loadedData?.let { resumeData.value = it }
+                            println("Resume data loaded for profile: ${selectedProfile?.name}")
+                        },
+                        onFailure = { error ->
+                            println("Failed to load resume data: ${error.message}")
+                        }
+                    )
+                } else {
+                    println("No profiles found, user needs to create one")
+                }
                 isLoading = false
             },
-            onFailure = {
+            onFailure = { error ->
                 isLoading = false
-                Toast.makeText(context, "Failed to load resume data", Toast.LENGTH_SHORT).show()
+                println("Failed to load profiles: ${error.message}")
+                Toast.makeText(context, "Failed to load profiles: ${error.message}", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -154,71 +202,150 @@ fun ResumeBuilderApp() {
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
-        // Top App Bar with Save button
+        // Top App Bar with Profile selector and actions
         TopAppBar(
             title = {
-                Text(
-                    text = "Resume Builder",
-                    fontWeight = FontWeight.Bold
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { showProfileDropdown = true }
+                ) {
+                    Text(
+                        text = selectedProfile?.name ?: "No Profile",
+                        fontWeight = FontWeight.Bold
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Select Profile",
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
             },
             actions = {
-                // Auto-save indicator
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    IconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                isLoading = true
-                                repository.saveResumeData(resumeData.value).fold(
-                                    onSuccess = { message ->
-                                        saveStatus = message
-                                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                        isLoading = false
-                                    },
-                                    onFailure = { error ->
-                                        Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
-                                        isLoading = false
-                                    }
-                                )
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = "Save Resume")
-                    }
+                // Profile management button
+                IconButton(
+                    onClick = { showProfileDialog = ProfileDialogState.CREATE }
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = "Add Profile")
                 }
 
+                // Refresh profiles button (for debugging)
                 IconButton(
                     onClick = {
                         coroutineScope.launch {
                             isLoading = true
-                            repository.loadResumeData().fold(
-                                onSuccess = { loadedData ->
-                                    loadedData?.let {
-                                        resumeData.value = it
-                                        Toast.makeText(context, "Resume loaded successfully!", Toast.LENGTH_SHORT).show()
-                                    } ?: Toast.makeText(context, "No saved resume found", Toast.LENGTH_SHORT).show()
+                            repository.loadProfiles().fold(
+                                onSuccess = { loadedProfiles ->
+                                    profiles = loadedProfiles
+                                    Toast.makeText(context, "Loaded ${loadedProfiles.size} profiles", Toast.LENGTH_SHORT).show()
                                     isLoading = false
                                 },
                                 onFailure = { error ->
-                                    Toast.makeText(context, "Load failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Refresh failed: ${error.message}", Toast.LENGTH_SHORT).show()
                                     isLoading = false
                                 }
                             )
                         }
                     }
                 ) {
-                    Icon(Icons.Default.CloudDownload, contentDescription = "Load Resume")
+                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Profiles")
+                }
+
+                // Edit profile button
+                selectedProfile?.let {
+                    IconButton(
+                        onClick = { showProfileDialog = ProfileDialogState.EDIT }
+                    ) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
+                    }
+                }
+
+                // Delete profile button
+                if (profiles.size > 1) {
+                    selectedProfile?.let {
+                        IconButton(
+                            onClick = { showProfileDialog = ProfileDialogState.DELETE }
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete Profile")
+                        }
+                    }
+                }
+
+                // Save button
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(24.dp),
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    selectedProfile?.let { profile ->
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    isLoading = true
+                                    repository.saveResumeData(profile.id, resumeData.value).fold(
+                                        onSuccess = { message ->
+                                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                            isLoading = false
+                                        },
+                                        onFailure = { error ->
+                                            Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                            isLoading = false
+                                        }
+                                    )
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = "Save Resume")
+                        }
+                    }
                 }
             },
             colors = TopAppBarDefaults.topAppBarColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
             )
         )
+
+        // Profile dropdown menu
+        DropdownMenu(
+            expanded = showProfileDropdown,
+            onDismissRequest = { showProfileDropdown = false }
+        ) {
+            profiles.forEach { profile ->
+                DropdownMenuItem(
+                    text = {
+                        Column {
+                            Text(
+                                text = profile.name,
+                                fontWeight = if (profile.id == selectedProfile?.id) FontWeight.Bold else FontWeight.Normal
+                            )
+                            Text(
+                                text = profile.description,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    },
+                    onClick = {
+                        selectedProfile = profile
+                        showProfileDropdown = false
+                        // Load resume data for selected profile
+                        coroutineScope.launch {
+                            isLoading = true
+                            repository.loadResumeData(profile.id).fold(
+                                onSuccess = { loadedData ->
+                                    resumeData.value = loadedData ?: ResumeData()
+                                    isLoading = false
+                                },
+                                onFailure = {
+                                    resumeData.value = ResumeData()
+                                    isLoading = false
+                                }
+                            )
+                        }
+                    }
+                )
+            }
+        }
 
         // Tab Row
         TabRow(
@@ -242,27 +369,459 @@ fun ResumeBuilderApp() {
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            when (selectedTab.value) {
-                ResumeTab.PERSONAL -> PersonalInfoTab(resumeData.value.personal)
-                ResumeTab.EDUCATION -> EducationTab(resumeData.value.education)
-                ResumeTab.EXPERIENCE -> ExperienceTab(resumeData.value.experience)
-                ResumeTab.PROJECTS -> ProjectsTab(resumeData.value.projects)
-                ResumeTab.SKILLS -> SkillsTab(resumeData.value.skills)
+            if (selectedProfile != null) {
+                when (selectedTab.value) {
+                    ResumeTab.PERSONAL -> PersonalInfoTab(resumeData.value.personal)
+                    ResumeTab.EDUCATION -> EducationTab(resumeData.value.education)
+                    ResumeTab.EXPERIENCE -> ExperienceTab(resumeData.value.experience)
+                    ResumeTab.PROJECTS -> ProjectsTab(resumeData.value.projects)
+                    ResumeTab.SKILLS -> SkillsTab(resumeData.value.skills)
+                }
+            } else {
+                // Show message when no profile is selected
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
+                ) {
+                    Text(
+                        text = "No Profile Selected",
+                        style = MaterialTheme.typography.headlineMedium
+                    )
+                    Text(
+                        text = "Create a new profile to get started",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = {
+                            showProfileDialog = ProfileDialogState.CREATE
+                        }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Create Profile")
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Create some default profiles
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                val defaultProfiles = listOf(
+                                    ProfileInfo(
+                                        id = "${System.currentTimeMillis()}_web_dev",
+                                        name = "Web Developer",
+                                        description = "Full-stack web development profile"
+                                    ),
+                                    ProfileInfo(
+                                        id = "${System.currentTimeMillis() + 1}_android_dev",
+                                        name = "Android Developer",
+                                        description = "Mobile Android development profile"
+                                    ),
+                                    ProfileInfo(
+                                        id = "${System.currentTimeMillis() + 2}_ml_dev",
+                                        name = "ML Engineer",
+                                        description = "Machine Learning and AI profile"
+                                    )
+                                )
+
+                                defaultProfiles.forEach { profile ->
+                                    repository.saveProfile(profile).fold(
+                                        onSuccess = {
+                                            profiles = profiles + profile
+                                        },
+                                        onFailure = { error ->
+                                            Toast.makeText(context, "Failed to create ${profile.name}: ${error.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+
+                                if (profiles.isNotEmpty()) {
+                                    selectedProfile = profiles.first()
+                                    Toast.makeText(context, "Default profiles created!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary
+                        )
+                    ) {
+                        Text("Create Default Profiles")
+                    }
+                }
             }
         }
 
-        DownloadResumeScreen(context, resumeData.value)
+        selectedProfile?.let {
+            DownloadResumeScreen(context, resumeData.value)
+        }
+    }
+
+    // Profile dialogs
+    when (showProfileDialog) {
+        ProfileDialogState.CREATE -> {
+            ProfileCreateDialog(
+                onDismiss = { showProfileDialog = ProfileDialogState.NONE },
+                onConfirm = { name, description ->
+                    coroutineScope.launch {
+                        val newProfile = ProfileInfo(
+                            id = "${System.currentTimeMillis()}_${name.replace(" ", "_")}",
+                            name = name,
+                            description = description
+                        )
+                        repository.saveProfile(newProfile).fold(
+                            onSuccess = {
+                                profiles = profiles + newProfile
+                                selectedProfile = newProfile
+                                resumeData.value = ResumeData()
+                                Toast.makeText(context, "Profile created successfully!", Toast.LENGTH_SHORT).show()
+                            },
+                            onFailure = { error ->
+                                Toast.makeText(context, "Failed to create profile: ${error.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                    showProfileDialog = ProfileDialogState.NONE
+                }
+            )
+        }
+        ProfileDialogState.EDIT -> {
+            selectedProfile?.let { profile ->
+                ProfileEditDialog(
+                    profile = profile,
+                    onDismiss = { showProfileDialog = ProfileDialogState.NONE },
+                    onConfirm = { updatedProfile ->
+                        coroutineScope.launch {
+                            repository.updateProfile(updatedProfile).fold(
+                                onSuccess = {
+                                    profiles = profiles.map { if (it.id == updatedProfile.id) updatedProfile else it }
+                                    selectedProfile = updatedProfile
+                                    Toast.makeText(context, "Profile updated successfully!", Toast.LENGTH_SHORT).show()
+                                },
+                                onFailure = { error ->
+                                    Toast.makeText(context, "Failed to update profile: ${error.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                        showProfileDialog = ProfileDialogState.NONE
+                    }
+                )
+            }
+        }
+        ProfileDialogState.DELETE -> {
+            selectedProfile?.let { profile ->
+                ProfileDeleteDialog(
+                    profile = profile,
+                    onDismiss = { showProfileDialog = ProfileDialogState.NONE },
+                    onConfirm = {
+                        coroutineScope.launch {
+                            repository.deleteProfile(profile.id).fold(
+                                onSuccess = {
+                                    profiles = profiles.filter { it.id != profile.id }
+                                    selectedProfile = profiles.firstOrNull()
+                                    if (selectedProfile != null) {
+                                        repository.loadResumeData(selectedProfile!!.id).fold(
+                                            onSuccess = { loadedData ->
+                                                resumeData.value = loadedData ?: ResumeData()
+                                            },
+                                            onFailure = {
+                                                resumeData.value = ResumeData()
+                                            }
+                                        )
+                                    } else {
+                                        resumeData.value = ResumeData()
+                                    }
+                                    Toast.makeText(context, "Profile deleted successfully!", Toast.LENGTH_SHORT).show()
+                                },
+                                onFailure = { error ->
+                                    Toast.makeText(context, "Failed to delete profile: ${error.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+                        showProfileDialog = ProfileDialogState.NONE
+                    }
+                )
+            }
+        }
+        ProfileDialogState.NONE -> { /* No dialog */ }
     }
 }
+
+// Profile Create Dialog
+@Composable
+fun ProfileCreateDialog(
+    onDismiss: () -> Unit,
+    onConfirm: (String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var description by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Create New Profile") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Profile Name") },
+                    placeholder = { Text("e.g., Web Developer, Android Developer") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    placeholder = { Text("Brief description of this profile") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onConfirm(name, description) },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Create")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// Profile Edit Dialog
+@Composable
+fun ProfileEditDialog(
+    profile: ProfileInfo,
+    onDismiss: () -> Unit,
+    onConfirm: (ProfileInfo) -> Unit
+) {
+    var name by remember { mutableStateOf(profile.name) }
+    var description by remember { mutableStateOf(profile.description) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Profile") },
+        text = {
+            Column {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Profile Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description") },
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 3
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onConfirm(
+                        profile.copy(
+                            name = name,
+                            description = description,
+                            lastModified = System.currentTimeMillis()
+                        )
+                    )
+                },
+                enabled = name.isNotBlank()
+            ) {
+                Text("Update")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// Profile Delete Dialog
+@Composable
+fun ProfileDeleteDialog(
+    profile: ProfileInfo,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Delete Profile") },
+        text = {
+            Text("Are you sure you want to delete the profile \"${profile.name}\"? This action cannot be undone.")
+        },
+        confirmButton = {
+            TextButton(
+                onClick = onConfirm,
+                colors = ButtonDefaults.textButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Delete")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
+}
+
+// Updated Repository class with profile management
 class ResumeRepository {
     private val firestore = Firebase.firestore
     private val auth = FirebaseAuth.getInstance()
 
     fun getCurrentUserEmail(): String? {
-        return auth.currentUser?.email
+        val currentUser = auth.currentUser
+        val email = currentUser?.email
+        println("Current user: $currentUser, Email: $email")
+        return email
     }
 
-    suspend fun saveResumeData(resumeData: ResumeData): Result<String> {
+    // Profile management methods
+    suspend fun loadProfiles(): Result<List<ProfileInfo>> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+            println("Loading profiles for user: $userEmail")
+
+            if (userEmail == null) {
+                println("User not logged in")
+                return Result.failure(Exception("User not logged in"))
+            }
+
+            val querySnapshot = firestore.collection("user_profiles")
+                .whereEqualTo("userEmail", userEmail)
+                .get()
+                .await()
+
+            println("Found ${querySnapshot.documents.size} profile documents")
+
+            val profiles = querySnapshot.documents.mapNotNull { document ->
+                try {
+                    println("Processing document: ${document.id}")
+                    val data = document.data
+                    println("Document data: $data")
+
+                    if (data != null) {
+                        val profile = ProfileInfo(
+                            id = document.id,
+                            name = data["name"] as? String ?: "",
+                            description = data["description"] as? String ?: "",
+                            createdAt = data["createdAt"] as? Long ?: System.currentTimeMillis(),
+                            lastModified = data["lastModified"] as? Long ?: System.currentTimeMillis()
+                        )
+                        println("Created profile: ${profile.name}")
+                        profile
+                    } else {
+                        println("Document data is null")
+                        null
+                    }
+                } catch (e: Exception) {
+                    println("Error processing document ${document.id}: ${e.message}")
+                    null
+                }
+            }
+
+            println("Successfully loaded ${profiles.size} profiles")
+            Result.success(profiles)
+        } catch (e: Exception) {
+            println("Error loading profiles: ${e.message}")
+            e.printStackTrace()
+            Result.failure(e)
+        }
+    }
+
+    suspend fun saveProfile(profile: ProfileInfo): Result<String> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            val profileData = mapOf(
+                "name" to profile.name,
+                "description" to profile.description,
+                "createdAt" to profile.createdAt,
+                "lastModified" to profile.lastModified,
+                "userEmail" to userEmail
+            )
+
+            firestore.collection("user_profiles")
+                .document(profile.id)
+                .set(profileData)
+                .await()
+
+            Result.success("Profile created successfully!")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateProfile(profile: ProfileInfo): Result<String> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            val profileData = mapOf(
+                "name" to profile.name,
+                "description" to profile.description,
+                "createdAt" to profile.createdAt,
+                "lastModified" to System.currentTimeMillis(),
+                "userEmail" to userEmail
+            )
+
+            firestore.collection("user_profiles")
+                .document(profile.id)
+                .update(profileData)
+                .await()
+
+            Result.success("Profile updated successfully!")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun deleteProfile(profileId: String): Result<String> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            // Delete the profile
+            firestore.collection("user_profiles")
+                .document(profileId)
+                .delete()
+                .await()
+
+            // Delete associated resume data
+            firestore.collection("resumes")
+                .document("${userEmail}_${profileId}")
+                .delete()
+                .await()
+
+            Result.success("Profile deleted successfully!")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Updated resume data methods to work with profiles
+    suspend fun saveResumeData(profileId: String, resumeData: ResumeData): Result<String> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
@@ -316,9 +875,18 @@ class ResumeRepository {
                 userEmail = userEmail
             )
 
+            // Use a compound key: userEmail_profileId
+            val documentId = "${userEmail}_${profileId}"
+
             firestore.collection("resumes")
-                .document(userEmail)
+                .document(documentId)
                 .set(firestoreData)
+                .await()
+
+            // Update profile's last modified time
+            firestore.collection("user_profiles")
+                .document(profileId)
+                .update("lastModified", System.currentTimeMillis())
                 .await()
 
             Result.success("Resume saved successfully!")
@@ -327,13 +895,15 @@ class ResumeRepository {
         }
     }
 
-    suspend fun loadResumeData(): Result<ResumeData?> {
+    suspend fun loadResumeData(profileId: String): Result<ResumeData?> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
 
+            val documentId = "${userEmail}_${profileId}"
+
             val document = firestore.collection("resumes")
-                .document(userEmail)
+                .document(documentId)
                 .get()
                 .await()
 
@@ -346,24 +916,24 @@ class ResumeRepository {
 
             val resumeData = ResumeData().apply {
                 // Load personal info
-                personal.name = data.personal["name"] ?: ""
-                personal.title = data.personal["title"] ?: ""
-                personal.email = data.personal["email"] ?: ""
-                personal.phone = data.personal["phone"] ?: ""
-                personal.location = data.personal["location"] ?: ""
-                personal.linkedin = data.personal["linkedin"] ?: ""
-                personal.github = data.personal["github"] ?: ""
-                personal.website = data.personal["website"] ?: ""
+                personal.name = data.personal["name"] as? String ?: ""
+                personal.title = data.personal["title"] as? String ?: ""
+                personal.email = data.personal["email"] as? String ?: ""
+                personal.phone = data.personal["phone"] as? String ?: ""
+                personal.location = data.personal["location"] as? String ?: ""
+                personal.linkedin = data.personal["linkedin"] as? String ?: ""
+                personal.github = data.personal["github"] as? String ?: ""
+                personal.website = data.personal["website"] as? String ?: ""
 
                 // Load education
                 education.clear()
                 data.education.forEach { eduMap ->
                     education.add(Education().apply {
-                        institution = eduMap["institution"] ?: ""
-                        degree = eduMap["degree"] ?: ""
-                        location = eduMap["location"] ?: ""
-                        startDate = eduMap["startDate"] ?: ""
-                        endDate = eduMap["endDate"] ?: ""
+                        institution = eduMap["institution"] as? String ?: ""
+                        degree = eduMap["degree"] as? String ?: ""
+                        location = eduMap["location"] as? String ?: ""
+                        startDate = eduMap["startDate"] as? String ?: ""
+                        endDate = eduMap["endDate"] as? String ?: ""
                     })
                 }
 
@@ -405,13 +975,52 @@ class ResumeRepository {
                 skills.tools.clear()
                 skills.libraries.clear()
 
-                data.skills["languages"]?.forEach { skills.languages.add(it) }
-                data.skills["frameworks"]?.forEach { skills.frameworks.add(it) }
-                data.skills["tools"]?.forEach { skills.tools.add(it) }
-                data.skills["libraries"]?.forEach { skills.libraries.add(it) }
+                (data.skills["languages"] as? List<*>)?.forEach { skill ->
+                    skills.languages.add(skill as? String ?: "")
+                }
+                (data.skills["frameworks"] as? List<*>)?.forEach { skill ->
+                    skills.frameworks.add(skill as? String ?: "")
+                }
+                (data.skills["tools"] as? List<*>)?.forEach { skill ->
+                    skills.tools.add(skill as? String ?: "")
+                }
+                (data.skills["libraries"] as? List<*>)?.forEach { skill ->
+                    skills.libraries.add(skill as? String ?: "")
+                }
             }
 
             Result.success(resumeData)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Utility method to duplicate a profile (useful for creating variations)
+    suspend fun duplicateProfile(originalProfileId: String, newName: String, newDescription: String): Result<String> {
+        return try {
+            val userEmail = getCurrentUserEmail()
+                ?: return Result.failure(Exception("User not logged in"))
+
+            // Load existing resume data
+            val existingData = loadResumeData(originalProfileId).getOrNull()
+
+            // Create new profile
+            val newProfileId = "${System.currentTimeMillis()}_${newName.replace(" ", "_")}"
+            val newProfile = ProfileInfo(
+                id = newProfileId,
+                name = newName,
+                description = newDescription
+            )
+
+            // Save new profile
+            saveProfile(newProfile).getOrThrow()
+
+            // Save resume data for new profile if it exists
+            existingData?.let {
+                saveResumeData(newProfileId, it).getOrThrow()
+            }
+
+            Result.success("Profile duplicated successfully!")
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -687,18 +1296,53 @@ fun ExperienceTab(experienceList: SnapshotStateList<Experience>) {
             }
         }
 
-        // Display experience items
+        // Display experience items with reordering controls
         experienceList.forEachIndexed { index, experience ->
             ExperienceItem(
                 experience = experience,
-                onDelete = { experienceList.removeAt(index) }
+                onDelete = {
+                    if (index < experienceList.size) {
+                        experienceList.removeAt(index)
+                    }
+                },
+                onMoveUp = if (index > 0) {
+                    {
+                        moveExperienceItem(experienceList, index, index - 1)
+                    }
+                } else null,
+                onMoveDown = if (index < experienceList.size - 1) {
+                    {
+                        moveExperienceItem(experienceList, index, index + 1)
+                    }
+                } else null
             )
         }
     }
 }
 
+// Safe function to move items in the list
+private fun moveExperienceItem(
+    list: SnapshotStateList<Experience>,
+    fromIndex: Int,
+    toIndex: Int
+) {
+    if (fromIndex >= 0 && fromIndex < list.size &&
+        toIndex >= 0 && toIndex < list.size &&
+        fromIndex != toIndex) {
+
+        val item = list[fromIndex]
+        list.removeAt(fromIndex)
+        list.add(toIndex, item)
+    }
+}
+
 @Composable
-fun ExperienceItem(experience: Experience, onDelete: () -> Unit) {
+fun ExperienceItem(
+    experience: Experience,
+    onDelete: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -709,15 +1353,54 @@ fun ExperienceItem(experience: Experience, onDelete: () -> Unit) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Experience Entry",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+
+                Row {
+                    // Move up button
+                    IconButton(
+                        onClick = { onMoveUp?.invoke() },
+                        enabled = onMoveUp != null
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = "Move Up",
+                            tint = if (onMoveUp != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+
+                    // Move down button
+                    IconButton(
+                        onClick = { onMoveDown?.invoke() },
+                        enabled = onMoveDown != null
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Move Down",
+                            tint = if (onMoveDown != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+
+                    // Delete button
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
 
@@ -761,7 +1444,7 @@ fun ExperienceItem(experience: Experience, onDelete: () -> Unit) {
                 )
             }
 
-            // Responsibilities
+            // Responsibilities section with reordering
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -776,23 +1459,114 @@ fun ExperienceItem(experience: Experience, onDelete: () -> Unit) {
             }
 
             experience.responsibilities.forEachIndexed { index, responsibility ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = responsibility,
-                        onValueChange = { experience.responsibilities[index] = it },
-                        label = { Text("Responsibility ${index + 1}") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { experience.responsibilities.removeAt(index) }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                    }
-                }
+                ResponsibilityItem(
+                    responsibility = responsibility,
+                    onValueChange = { experience.responsibilities[index] = it },
+                    onDelete = {
+                        if (index < experience.responsibilities.size) {
+                            experience.responsibilities.removeAt(index)
+                        }
+                    },
+                    onMoveUp = if (index > 0) {
+                        {
+                            moveResponsibilityItem(experience.responsibilities, index, index - 1)
+                        }
+                    } else null,
+                    onMoveDown = if (index < experience.responsibilities.size - 1) {
+                        {
+                            moveResponsibilityItem(experience.responsibilities, index, index + 1)
+                        }
+                    } else null,
+                    index = index
+                )
             }
+        }
+    }
+}
+
+// Safe function to move responsibility items
+private fun moveResponsibilityItem(
+    list: SnapshotStateList<String>,
+    fromIndex: Int,
+    toIndex: Int
+) {
+    if (fromIndex >= 0 && fromIndex < list.size &&
+        toIndex >= 0 && toIndex < list.size &&
+        fromIndex != toIndex) {
+
+        val item = list[fromIndex]
+        list.removeAt(fromIndex)
+        list.add(toIndex, item)
+    }
+}
+
+@Composable
+fun ResponsibilityItem(
+    responsibility: String,
+    onValueChange: (String) -> Unit,
+    onDelete: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
+    index: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Reorder controls
+        Column {
+            IconButton(
+                onClick = { onMoveUp?.invoke() },
+                enabled = onMoveUp != null,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = "Move Up",
+                    modifier = Modifier.size(16.dp),
+                    tint = if (onMoveUp != null)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            }
+
+            IconButton(
+                onClick = { onMoveDown?.invoke() },
+                enabled = onMoveDown != null,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Move Down",
+                    modifier = Modifier.size(16.dp),
+                    tint = if (onMoveDown != null)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            }
+        }
+
+        // Text field
+        OutlinedTextField(
+            value = responsibility,
+            onValueChange = onValueChange,
+            label = { Text("Responsibility ${index + 1}") },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Delete button
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete",
+                tint = MaterialTheme.colorScheme.error
+            )
         }
     }
 }
@@ -857,18 +1631,53 @@ fun ProjectsTab(projectsList: SnapshotStateList<Project>) {
             }
         }
 
-        // Display project items
+        // Display project items with reordering controls
         projectsList.forEachIndexed { index, project ->
             ProjectItem(
                 project = project,
-                onDelete = { projectsList.removeAt(index) }
+                onDelete = {
+                    if (index < projectsList.size) {
+                        projectsList.removeAt(index)
+                    }
+                },
+                onMoveUp = if (index > 0) {
+                    {
+                        moveProjectItem(projectsList, index, index - 1)
+                    }
+                } else null,
+                onMoveDown = if (index < projectsList.size - 1) {
+                    {
+                        moveProjectItem(projectsList, index, index + 1)
+                    }
+                } else null
             )
         }
     }
 }
 
+// Safe function to move project items
+private fun moveProjectItem(
+    list: SnapshotStateList<Project>,
+    fromIndex: Int,
+    toIndex: Int
+) {
+    if (fromIndex >= 0 && fromIndex < list.size &&
+        toIndex >= 0 && toIndex < list.size &&
+        fromIndex != toIndex) {
+
+        val item = list[fromIndex]
+        list.removeAt(fromIndex)
+        list.add(toIndex, item)
+    }
+}
+
 @Composable
-fun ProjectItem(project: Project, onDelete: () -> Unit) {
+fun ProjectItem(
+    project: Project,
+    onDelete: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -879,15 +1688,54 @@ fun ProjectItem(project: Project, onDelete: () -> Unit) {
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "Project Entry",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+
+                Row {
+                    // Move up button
+                    IconButton(
+                        onClick = { onMoveUp?.invoke() },
+                        enabled = onMoveUp != null
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowUp,
+                            contentDescription = "Move Up",
+                            tint = if (onMoveUp != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+
+                    // Move down button
+                    IconButton(
+                        onClick = { onMoveDown?.invoke() },
+                        enabled = onMoveDown != null
+                    ) {
+                        Icon(
+                            Icons.Default.KeyboardArrowDown,
+                            contentDescription = "Move Down",
+                            tint = if (onMoveDown != null)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                        )
+                    }
+
+                    // Delete button
+                    IconButton(onClick = onDelete) {
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            tint = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
             }
 
@@ -931,7 +1779,7 @@ fun ProjectItem(project: Project, onDelete: () -> Unit) {
                 )
             }
 
-            // Description
+            // Description section with reordering
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -946,23 +1794,114 @@ fun ProjectItem(project: Project, onDelete: () -> Unit) {
             }
 
             project.description.forEachIndexed { index, desc ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = desc,
-                        onValueChange = { project.description[index] = it },
-                        label = { Text("Description ${index + 1}") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { project.description.removeAt(index) }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                    }
-                }
+                DescriptionItem(
+                    description = desc,
+                    onValueChange = { project.description[index] = it },
+                    onDelete = {
+                        if (index < project.description.size) {
+                            project.description.removeAt(index)
+                        }
+                    },
+                    onMoveUp = if (index > 0) {
+                        {
+                            moveDescriptionItem(project.description, index, index - 1)
+                        }
+                    } else null,
+                    onMoveDown = if (index < project.description.size - 1) {
+                        {
+                            moveDescriptionItem(project.description, index, index + 1)
+                        }
+                    } else null,
+                    index = index
+                )
             }
+        }
+    }
+}
+
+// Safe function to move description items
+private fun moveDescriptionItem(
+    list: SnapshotStateList<String>,
+    fromIndex: Int,
+    toIndex: Int
+) {
+    if (fromIndex >= 0 && fromIndex < list.size &&
+        toIndex >= 0 && toIndex < list.size &&
+        fromIndex != toIndex) {
+
+        val item = list[fromIndex]
+        list.removeAt(fromIndex)
+        list.add(toIndex, item)
+    }
+}
+
+@Composable
+fun DescriptionItem(
+    description: String,
+    onValueChange: (String) -> Unit,
+    onDelete: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
+    index: Int
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Reorder controls
+        Column {
+            IconButton(
+                onClick = { onMoveUp?.invoke() },
+                enabled = onMoveUp != null,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowUp,
+                    contentDescription = "Move Up",
+                    modifier = Modifier.size(16.dp),
+                    tint = if (onMoveUp != null)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            }
+
+            IconButton(
+                onClick = { onMoveDown?.invoke() },
+                enabled = onMoveDown != null,
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = "Move Down",
+                    modifier = Modifier.size(16.dp),
+                    tint = if (onMoveDown != null)
+                        MaterialTheme.colorScheme.primary
+                    else
+                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                )
+            }
+        }
+
+        // Text field
+        OutlinedTextField(
+            value = description,
+            onValueChange = onValueChange,
+            label = { Text("Description ${index + 1}") },
+            modifier = Modifier.weight(1f)
+        )
+
+        // Delete button
+        IconButton(
+            onClick = onDelete,
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = "Delete",
+                tint = MaterialTheme.colorScheme.error
+            )
         }
     }
 }
@@ -1015,25 +1954,118 @@ fun SkillSection(title: String, skillsList: SnapshotStateList<String>) {
             }
 
             skillsList.forEachIndexed { index, skill ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = skill,
-                        onValueChange = { skillsList[index] = it },
-                        label = { Text("Skill ${index + 1}") },
-                        modifier = Modifier.weight(1f)
-                    )
-                    IconButton(
-                        onClick = { skillsList.removeAt(index) }
-                    ) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
+                SkillItem(
+                    skill = skill,
+                    onValueChange = { skillsList[index] = it },
+                    onDelete = {
+                        if (index < skillsList.size) {
+                            skillsList.removeAt(index)
+                        }
+                    },
+                    onMoveUp = if (index > 0) {
+                        {
+                            moveSkillItem(skillsList, index, index - 1)
+                        }
+                    } else null,
+                    onMoveDown = if (index < skillsList.size - 1) {
+                        {
+                            moveSkillItem(skillsList, index, index + 1)
+                        }
+                    } else null,
+                    index = index
+                )
             }
         }
+    }
+}
+
+// Safe function to move skill items
+private fun moveSkillItem(
+    list: SnapshotStateList<String>,
+    fromIndex: Int,
+    toIndex: Int
+) {
+    if (fromIndex >= 0 && fromIndex < list.size &&
+        toIndex >= 0 && toIndex < list.size &&
+        fromIndex != toIndex) {
+
+        val item = list[fromIndex]
+        list.removeAt(fromIndex)
+        list.add(toIndex, item)
+    }
+}
+
+@Composable
+fun SkillItem(
+    skill: String,
+    onValueChange: (String) -> Unit,
+    onDelete: () -> Unit,
+    onMoveUp: (() -> Unit)?,
+    onMoveDown: (() -> Unit)?,
+    index: Int
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Reorder controls
+            Column {
+                IconButton(
+                    onClick = { onMoveUp?.invoke() },
+                    enabled = onMoveUp != null,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowUp,
+                        contentDescription = "Move Up",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (onMoveUp != null)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
+
+                IconButton(
+                    onClick = { onMoveDown?.invoke() },
+                    enabled = onMoveDown != null,
+                    modifier = Modifier.size(24.dp)
+                ) {
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Move Down",
+                        modifier = Modifier.size(16.dp),
+                        tint = if (onMoveDown != null)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
+            }
+
+            // Text field
+            OutlinedTextField(
+                value = skill,
+                onValueChange = onValueChange,
+                label = { Text("Skill ${index + 1}") },
+                modifier = Modifier.weight(1f)
+            )
+
+            // Delete button
+            IconButton(
+                onClick = onDelete,
+                modifier = Modifier.size(40.dp)
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = "Delete",
+                    tint = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
     }
 }
 @Composable
