@@ -60,7 +60,21 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.unit.IntOffset
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
-
+// Additional imports needed
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.geometry.*
+import androidx.compose.ui.graphics.*
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.Job
+import kotlin.math.*
     data class ExerciseProfile(
 val id: String = "",
 val name: String = "",
@@ -105,7 +119,8 @@ class ExerciseTimerViewModel : ViewModel() {
 
     private val _remainingSeconds = MutableLiveData(0)
     val remainingSeconds: LiveData<Int> = _remainingSeconds
-
+    private var reorderJob: Job? = null
+    private val reorderDelay = 500L // 500ms delay
     private val _totalSeconds = MutableLiveData(0)
     val totalSeconds: LiveData<Int> = _totalSeconds
 
@@ -122,6 +137,7 @@ class ExerciseTimerViewModel : ViewModel() {
     val errorMessage: LiveData<String?> = _errorMessage
 
     private var profilesListener: ListenerRegistration? = null
+    private var hasCheckedForDefaultProfiles = false // Add this flag
 
     init {
         loadProfiles()
@@ -132,7 +148,7 @@ class ExerciseTimerViewModel : ViewModel() {
 
         profilesListener = db.collection("exercise_profiles")
             .whereEqualTo("userId", userId)
-            .orderBy("order") // Change from "createdAt" to "order"
+            .orderBy("order")
             .addSnapshotListener { snapshot, error ->
                 if (error != null) {
                     _errorMessage.value = "Failed to load profiles: ${error.message}"
@@ -145,7 +161,12 @@ class ExerciseTimerViewModel : ViewModel() {
 
                 _profiles.value = profilesList
 
-                if (profilesList.isEmpty() && snapshot != null && !snapshot.metadata.isFromCache) {
+                // Only create default profiles once, when we first load and list is empty
+                if (profilesList.isEmpty() &&
+                    snapshot != null &&
+                    !snapshot.metadata.isFromCache &&
+                    !hasCheckedForDefaultProfiles) {
+                    hasCheckedForDefaultProfiles = true
                     createDefaultProfiles()
                 } else {
                     val currentIndex = _selectedProfileIndex.value ?: 0
@@ -154,16 +175,52 @@ class ExerciseTimerViewModel : ViewModel() {
                     }
                     updateTimerForSelectedProfile()
                 }
-            }}
+            }
+    }
 
     private fun createDefaultProfiles() {
         val userId = auth.currentUser?.uid ?: return
         val defaultProfiles = listOf(
-            ExerciseProfile(name = "Push-ups", iconName = "FitnessCenter", defaultMinutes = 5, colorHex = "#4CAF50", userId = userId),
-            ExerciseProfile(name = "Plank", iconName = "Timer", defaultMinutes = 3, colorHex = "#2196F3", userId = userId),
-            ExerciseProfile(name = "Squats", iconName = "DirectionsRun", defaultMinutes = 4, colorHex = "#9C27B0", userId = userId),
-            ExerciseProfile(name = "Burpees", iconName = "Sports", defaultMinutes = 6, colorHex = "#FF5722", userId = userId),
-            ExerciseProfile(name = "Yoga", iconName = "SportsGymnastics", defaultMinutes = 15, colorHex = "#FF9800", userId = userId)
+            ExerciseProfile(
+                name = "Push-ups",
+                iconName = "FitnessCenter",
+                defaultMinutes = 5,
+                colorHex = "#4CAF50",
+                userId = userId,
+                order = 0
+            ),
+            ExerciseProfile(
+                name = "Plank",
+                iconName = "Timer",
+                defaultMinutes = 3,
+                colorHex = "#2196F3",
+                userId = userId,
+                order = 1
+            ),
+            ExerciseProfile(
+                name = "Squats",
+                iconName = "DirectionsRun",
+                defaultMinutes = 4,
+                colorHex = "#9C27B0",
+                userId = userId,
+                order = 2
+            ),
+            ExerciseProfile(
+                name = "Burpees",
+                iconName = "Sports",
+                defaultMinutes = 6,
+                colorHex = "#FF5722",
+                userId = userId,
+                order = 3
+            ),
+            ExerciseProfile(
+                name = "Yoga",
+                iconName = "SportsGymnastics",
+                defaultMinutes = 15,
+                colorHex = "#FF9800",
+                userId = userId,
+                order = 4
+            )
         )
 
         viewModelScope.launch {
@@ -181,7 +238,26 @@ class ExerciseTimerViewModel : ViewModel() {
         _selectedProfileIndex.value = index
         updateTimerForSelectedProfile()
     }
+    fun stopTimer(context: Context) {
+        _timerState.value = TimerState.STOPPED
+        cancelTimerWork(context)
+        // Don't reset the time - keep current remaining seconds
+    }
 
+    fun seekToTime(seekSeconds: Int) {
+        val totalSecs = _totalSeconds.value ?: 0
+        if (totalSecs > 0 && seekSeconds in 0..totalSecs) {
+            _remainingSeconds.value = seekSeconds
+
+            // If timer is running, restart the WorkManager task with new time
+            if (_timerState.value == TimerState.RUNNING) {
+                // Get current context - you might need to pass context to this method
+                // or store it as a class variable if needed for WorkManager operations
+                // For now, we'll just update the local timer
+                startLocalTimer()
+            }
+        }
+    }
     private fun updateTimerForSelectedProfile() {
         if (_timerState.value == TimerState.STOPPED) {
             val profile = getCurrentProfile()
@@ -274,21 +350,41 @@ class ExerciseTimerViewModel : ViewModel() {
         val userId = auth.currentUser?.uid ?: return
         _isLoading.value = true
 
-        // Optimistically add to local list for instant UI feedback
         val currentProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
-        val tempProfile = profile.copy(id = "temp_${System.currentTimeMillis()}", userId = userId)
-        currentProfiles.add(tempProfile)
+        val newOrder = currentProfiles.size
+
+        // Create profile with temporary ID for optimistic update
+        val profileWithTempId = profile.copy(
+            userId = userId,
+            order = newOrder,
+            id = "temp_${System.currentTimeMillis()}" // Temporary ID
+        )
+
+        // Optimistic update - add to UI immediately
+        currentProfiles.add(profileWithTempId)
         _profiles.value = currentProfiles
 
         viewModelScope.launch {
             try {
-                val docRef = db.collection("exercise_profiles").add(profile.copy(userId = userId)).await()
-                // Real-time listener will update with actual server data
+                // Add to Firestore
+                val docRef = db.collection("exercise_profiles")
+                    .add(profile.copy(userId = userId, order = newOrder))
+                    .await()
+
+                // Update the temporary profile with real Firestore ID
+                val updatedProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
+                val tempIndex = updatedProfiles.indexOfFirst { it.id == profileWithTempId.id }
+                if (tempIndex != -1) {
+                    updatedProfiles[tempIndex] = profileWithTempId.copy(id = docRef.id)
+                    _profiles.value = updatedProfiles
+                }
+
             } catch (e: Exception) {
                 // Revert optimistic update on failure
                 val revertedProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
-                revertedProfiles.removeAll { it.id == tempProfile.id }
+                revertedProfiles.removeIf { it.id == profileWithTempId.id }
                 _profiles.value = revertedProfiles
+
                 _errorMessage.value = "Failed to add profile: ${e.message}"
             } finally {
                 _isLoading.value = false
@@ -300,11 +396,13 @@ class ExerciseTimerViewModel : ViewModel() {
         if (profile.id.isEmpty()) return
         _isLoading.value = true
 
-        // Optimistically update local list
+        // Optimistic update - update UI immediately
         val currentProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
-        val index = currentProfiles.indexOfFirst { it.id == profile.id }
-        if (index != -1) {
-            currentProfiles[index] = profile
+        val profileIndex = currentProfiles.indexOfFirst { it.id == profile.id }
+        val oldProfile = if (profileIndex != -1) currentProfiles[profileIndex] else null
+
+        if (profileIndex != -1) {
+            currentProfiles[profileIndex] = profile
             _profiles.value = currentProfiles
         }
 
@@ -314,47 +412,66 @@ class ExerciseTimerViewModel : ViewModel() {
                     .document(profile.id)
                     .set(profile)
                     .await()
-                // Real-time listener will sync with server data
             } catch (e: Exception) {
-                // Revert on failure - real-time listener will restore original data
+                // Revert optimistic update on failure
+                if (profileIndex != -1 && oldProfile != null) {
+                    val revertedProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
+                    if (profileIndex < revertedProfiles.size) {
+                        revertedProfiles[profileIndex] = oldProfile
+                        _profiles.value = revertedProfiles
+                    }
+                }
                 _errorMessage.value = "Failed to update profile: ${e.message}"
             } finally {
                 _isLoading.value = false
             }
         }
     }
-
     fun deleteProfile(profileId: String) {
         if (profileId.isEmpty()) return
         _isLoading.value = true
 
-        // Optimistically remove from local list
+        // Store the current state for potential rollback
         val currentProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
+        val currentIndex = _selectedProfileIndex.value ?: 0
         val profileToDelete = currentProfiles.find { it.id == profileId }
-        currentProfiles.removeAll { it.id == profileId }
+        val profileIndex = currentProfiles.indexOfFirst { it.id == profileId }
+
+        if (profileToDelete == null) {
+            _isLoading.value = false
+            return
+        }
+
+        // Optimistically remove from local list for immediate UI feedback
+        currentProfiles.removeAt(profileIndex)
         _profiles.value = currentProfiles
 
-        // Adjust selected index if needed
-        val currentIndex = _selectedProfileIndex.value ?: 0
-        if (currentIndex >= currentProfiles.size && currentProfiles.isNotEmpty()) {
-            _selectedProfileIndex.value = 0
+        // Adjust selected index immediately
+        val newSelectedIndex = when {
+            currentProfiles.isEmpty() -> 0
+            currentIndex >= currentProfiles.size -> maxOf(0, currentProfiles.size - 1)
+            profileIndex <= currentIndex && currentIndex > 0 -> currentIndex - 1
+            else -> currentIndex
         }
+        _selectedProfileIndex.value = newSelectedIndex
 
         viewModelScope.launch {
             try {
+                // Delete from Firestore
                 db.collection("exercise_profiles")
                     .document(profileId)
                     .delete()
                     .await()
-                // Real-time listener will confirm deletion
+
+                // Real-time listener will confirm the deletion
+
             } catch (e: Exception) {
-                // Revert on failure
-                if (profileToDelete != null) {
-                    val revertedProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
-                    revertedProfiles.add(profileToDelete)
-                    revertedProfiles.sortBy { it.createdAt }
-                    _profiles.value = revertedProfiles
-                }
+                // Revert optimistic update on failure
+                val revertedProfiles = _profiles.value?.toMutableList() ?: mutableListOf()
+                revertedProfiles.add(profileIndex, profileToDelete)
+                _profiles.value = revertedProfiles
+                _selectedProfileIndex.value = currentIndex
+
                 _errorMessage.value = "Failed to delete profile: ${e.message}"
             } finally {
                 _isLoading.value = false
@@ -366,10 +483,10 @@ class ExerciseTimerViewModel : ViewModel() {
         _errorMessage.value = null
     }
 
-    override fun onCleared() {
-        super.onCleared()
-        profilesListener?.remove()
-    }
+    // Add these properties to your ViewModel class
+
+
+    // Enhanced reorderProfiles method with debouncing
     fun reorderProfiles(fromIndex: Int, toIndex: Int) {
         val currentProfiles = _profiles.value?.toMutableList() ?: return
         if (fromIndex < 0 || fromIndex >= currentProfiles.size ||
@@ -377,12 +494,22 @@ class ExerciseTimerViewModel : ViewModel() {
 
         val userId = auth.currentUser?.uid ?: return
 
-        // Optimistically update local list
-        val item = currentProfiles.removeAt(fromIndex)
-        currentProfiles.add(toIndex, item)
-        _profiles.value = currentProfiles
+        // Cancel previous reorder job
+        reorderJob?.cancel()
 
-        // Adjust selected index if needed
+        // Optimistic update - update UI immediately
+        val tempList = currentProfiles.toMutableList()
+        val item = tempList.removeAt(fromIndex)
+        tempList.add(toIndex, item)
+
+        // Update orders in the temp list
+        tempList.forEachIndexed { index, profile ->
+            tempList[index] = profile.copy(order = index)
+        }
+
+        _profiles.value = tempList
+
+        // Adjust selected index immediately
         val currentSelectedIndex = _selectedProfileIndex.value ?: 0
         val newSelectedIndex = when {
             currentSelectedIndex == fromIndex -> toIndex
@@ -393,23 +520,63 @@ class ExerciseTimerViewModel : ViewModel() {
         }
         _selectedProfileIndex.value = newSelectedIndex
 
-        // Update order in Firestore
-        viewModelScope.launch {
+        // Debounced Firestore update
+        reorderJob = viewModelScope.launch {
+            delay(reorderDelay) // Wait for rapid changes to settle
+
             try {
+                val finalProfiles = _profiles.value ?: return@launch
                 val batch = db.batch()
-                currentProfiles.forEachIndexed { index, profile ->
-                    val docRef = db.collection("exercise_profiles").document(profile.id)
-                    batch.update(docRef, "order", index)
+                finalProfiles.forEachIndexed { index, profile ->
+                    if (profile.id.isNotEmpty() && !profile.id.startsWith("temp_")) {
+                        val docRef = db.collection("exercise_profiles").document(profile.id)
+                        batch.update(docRef, "order", index)
+                    }
                 }
                 batch.commit().await()
+
             } catch (e: Exception) {
-                _errorMessage.value = "Failed to reorder profiles: ${e.message}"
-                // Note: Real-time listener will restore original order on failure
+                // On failure, the real-time listener will eventually correct the order
+                _errorMessage.value = "Failed to save new order: ${e.message}"
             }
         }
     }
 
-    // Update loadProfiles to order by the order field
+    // Also add this method to handle cleanup
+    override fun onCleared() {
+        super.onCleared()
+        profilesListener?.remove()
+        reorderJob?.cancel() // Cancel any pending reorder operations
+    }
+    // Function to delete all default profiles (call this once to clean up)
+    fun deleteAllDefaultProfiles() {
+        val userId = auth.currentUser?.uid ?: return
+        _isLoading.value = true
+
+        viewModelScope.launch {
+            try {
+                val snapshot = db.collection("exercise_profiles")
+                    .whereEqualTo("userId", userId)
+                    .get()
+                    .await()
+
+                val batch = db.batch()
+                snapshot.documents.forEach { doc ->
+                    batch.delete(doc.reference)
+                }
+                batch.commit().await()
+
+                // Reset the flag so you can create new profiles if needed
+                hasCheckedForDefaultProfiles = false
+
+            } catch (e: Exception) {
+                _errorMessage.value = "Failed to delete profiles: ${e.message}"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
 
 }
 
@@ -492,6 +659,7 @@ fun ExerciseTimerScreen(viewModel: ExerciseTimerViewModel = androidx.lifecycle.v
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            // Replace the existing LazyRow in your ExerciseTimerScreen with this:
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(horizontal = 8.dp)
@@ -502,117 +670,49 @@ fun ExerciseTimerScreen(viewModel: ExerciseTimerViewModel = androidx.lifecycle.v
                         isSelected = selectedProfileIndex == index,
                         onClick = { viewModel.selectProfile(index) },
                         onEdit = { viewModel.showEditProfileDialog(profiles[index]) },
-                        onDelete = { viewModel.deleteProfile(profiles[index].id) }
+                        onDelete = { viewModel.deleteProfile(profiles[index].id) },
+                        onMoveLeft = {
+                            if (index > 0) {
+                                viewModel.reorderProfiles(index, index - 1)
+                            }
+                        },
+                        onMoveRight = {
+                            if (index < profiles.size - 1) {
+                                viewModel.reorderProfiles(index, index + 1)
+                            }
+                        },
+                        canMoveLeft = index > 0,
+                        canMoveRight = index < profiles.size - 1
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Timer Display
+            // Timer Display with Circular Slider
             currentProfile?.let { profile ->
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.size(280.dp)
-                ) {
-                    val progress = if (totalSeconds > 0) {
-                        ((totalSeconds - remainingSeconds).toFloat() / totalSeconds.toFloat()).coerceIn(0f, 1f)
-                    } else 0f
+                CircularTimerWithSlider(
+                    profile = profile,
+                    remainingSeconds = remainingSeconds,
+                    totalSeconds = totalSeconds,
+                    timerState = timerState,
+                    onSeek = { seekSeconds ->
+                        viewModel.seekToTime(seekSeconds)
+                    },
+                    onStart = { viewModel.startTimer(context) },
+                    onPause = { viewModel.pauseTimer(context) },
+                    onStop = { viewModel.stopTimer(context) },
+                    onReset = { viewModel.resetTimer(context) }
+                )
 
-                    CircularProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxSize(),
-                        strokeWidth = 8.dp,
-                        color = profile.getColor(),
-                        trackColor = profile.getColor().copy(alpha = 0.2f),
-                        strokeCap = StrokeCap.Round
-                    )
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(
-                            imageVector = profile.getIcon(),
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = profile.getColor()
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = profile.name,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = formatTime(remainingSeconds),
-                            style = MaterialTheme.typography.displayMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = profile.getColor()
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(32.dp))
-
-                // Control Buttons
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Start/Pause Button
-                    FloatingActionButton(
-                        onClick = {
-                            when (timerState) {
-                                TimerState.STOPPED -> viewModel.startTimer(context)
-                                TimerState.RUNNING -> viewModel.pauseTimer(context)
-                                TimerState.PAUSED -> viewModel.startTimer(context)
-                            }
-                        },
-                        containerColor = profile.getColor(),
-                        modifier = Modifier.size(64.dp)
-                    ) {
-                        Icon(
-                            imageVector = when (timerState) {
-                                TimerState.STOPPED -> Icons.Default.PlayArrow
-                                TimerState.RUNNING -> Icons.Default.Pause
-                                TimerState.PAUSED -> Icons.Default.PlayArrow
-                            },
-                            contentDescription = when (timerState) {
-                                TimerState.STOPPED -> "Start"
-                                TimerState.RUNNING -> "Pause"
-                                TimerState.PAUSED -> "Resume"
-                            },
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-
-                    // Reset Button
-                    FloatingActionButton(
-                        onClick = { viewModel.resetTimer(context) },
-                        containerColor = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(64.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = "Reset",
-                            modifier = Modifier.size(32.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Status Text
                 Text(
                     text = when (timerState) {
-                        TimerState.STOPPED -> if (remainingSeconds == 0) "Time's up!" else "Ready to start"
-                        TimerState.RUNNING -> "Timer running..."
-                        TimerState.PAUSED -> "Timer paused"
+                        TimerState.STOPPED -> if (remainingSeconds == 0) "🎉 Time's up!" else "Ready to start"
+                        TimerState.RUNNING -> "⏱️ Timer running..."
+                        TimerState.PAUSED -> "⏸️ Timer paused"
                     },
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
@@ -644,20 +744,25 @@ fun ExerciseTimerScreen(viewModel: ExerciseTimerViewModel = androidx.lifecycle.v
     }
 }
 
+
 @Composable
 fun ProfileCard(
     profile: ExerciseProfile,
     isSelected: Boolean,
     onClick: () -> Unit,
     onEdit: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onMoveLeft: () -> Unit,
+    onMoveRight: () -> Unit,
+    canMoveLeft: Boolean,
+    canMoveRight: Boolean
 ) {
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
         modifier = Modifier
-            .width(100.dp)
-            .height(120.dp),
+            .width(120.dp) // Slightly wider to accommodate arrows
+            .height(140.dp), // Slightly taller
         onClick = onClick,
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) profile.getColor().copy(alpha = 0.2f)
@@ -701,16 +806,52 @@ fun ProfileCard(
                 )
             }
 
-            // Menu button
+            // Menu button (top right)
             IconButton(
                 onClick = { showMenu = true },
-                modifier = Modifier.align(Alignment.TopEnd)
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(24.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.MoreVert,
                     contentDescription = "Options",
                     modifier = Modifier.size(16.dp)
                 )
+            }
+
+            // Left arrow button (bottom left)
+            if (canMoveLeft) {
+                IconButton(
+                    onClick = onMoveLeft,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = "Move Left",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            // Right arrow button (bottom right)
+            if (canMoveRight) {
+                IconButton(
+                    onClick = onMoveRight,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(24.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Move Right",
+                        modifier = Modifier.size(18.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
 
             DropdownMenu(
@@ -879,6 +1020,266 @@ fun AddEditProfileDialog(
         }
     }
 }
+
+@Composable
+fun CircularTimerWithSlider(
+    profile: ExerciseProfile,
+    remainingSeconds: Int,
+    totalSeconds: Int,
+    timerState: TimerState,
+    onSeek: (Int) -> Unit,
+    onStart: () -> Unit,
+    onPause: () -> Unit,
+    onStop: () -> Unit,
+    onReset: () -> Unit
+) {
+    var isDragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableStateOf(0f) }
+
+    val progress = if (totalSeconds > 0) {
+        if (isDragging) {
+            dragProgress
+        } else {
+            ((totalSeconds - remainingSeconds).toFloat() / totalSeconds.toFloat()).coerceIn(0f, 1f)
+        }
+    } else 0f
+
+    Box(
+        contentAlignment = Alignment.Center,
+        modifier = Modifier
+            .size(300.dp) // Slightly larger to accommodate buttons
+            .pointerInput(totalSeconds) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        // Only allow dragging when timer is stopped or paused
+                        if (timerState == TimerState.STOPPED || timerState == TimerState.PAUSED) {
+                            isDragging = true
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val angle = calculateAngleFromOffset(offset, center)
+                            dragProgress = (angle / 360f).coerceIn(0f, 1f)
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        if (isDragging) {
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val angle = calculateAngleFromOffset(change.position, center)
+                            dragProgress = (angle / 360f).coerceIn(0f, 1f)
+                        }
+                    },
+                    onDragEnd = {
+                        if (isDragging && totalSeconds > 0) {
+                            val seekSeconds = (totalSeconds * (1f - dragProgress)).toInt()
+                            onSeek(seekSeconds.coerceIn(0, totalSeconds))
+                        }
+                        isDragging = false
+                    }
+                )
+            }
+    ) {
+        // Background circle
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 10.dp.toPx()
+            val radius = (size.minDimension - strokeWidth) / 2f - 30.dp.toPx() // More space for buttons
+            val center = Offset(size.width / 2f, size.height / 2f)
+
+            // Draw background track
+            drawCircle(
+                color = profile.getColor().copy(alpha = 0.2f),
+                radius = radius,
+                center = center,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+
+            // Draw progress arc
+            if (progress > 0f) {
+                drawArc(
+                    color = profile.getColor(),
+                    startAngle = -90f,
+                    sweepAngle = progress * 360f,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+                    topLeft = Offset(center.x - radius, center.y - radius),
+                    size = Size(radius * 2, radius * 2)
+                )
+            }
+
+            // Draw draggable handle (only when dragging or when timer is not running)
+            if (totalSeconds > 0 && (isDragging || timerState != TimerState.RUNNING)) {
+                val handleAngle = (progress * 360f - 90f) * (PI / 180f)
+                val handleX = center.x + cos(handleAngle.toFloat()) * radius
+                val handleY = center.y + sin(handleAngle.toFloat()) * radius
+
+                // Handle shadow
+                drawCircle(
+                    color = Color.Black.copy(alpha = 0.2f),
+                    radius = 12.dp.toPx(),
+                    center = Offset(handleX + 2f, handleY + 2f)
+                )
+
+                // Handle
+                drawCircle(
+                    color = profile.getColor(),
+                    radius = 10.dp.toPx(),
+                    center = Offset(handleX, handleY)
+                )
+
+                // Handle inner circle
+                drawCircle(
+                    color = Color.White,
+                    radius = 6.dp.toPx(),
+                    center = Offset(handleX, handleY)
+                )
+            }
+        }
+
+        // Timer content
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = profile.getIcon(),
+                contentDescription = null,
+                modifier = Modifier.size(40.dp),
+                tint = profile.getColor()
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = profile.name,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val displaySeconds = if (isDragging && totalSeconds > 0) {
+                (totalSeconds * (1f - dragProgress)).toInt()
+            } else {
+                remainingSeconds
+            }
+
+            Text(
+                text = formatTime(displaySeconds),
+                style = MaterialTheme.typography.displaySmall,
+                fontWeight = FontWeight.Bold,
+                color = if (isDragging) {
+                    profile.getColor().copy(alpha = 0.7f)
+                } else {
+                    profile.getColor()
+                }
+            )
+
+            if (isDragging) {
+                Text(
+                    text = "Release to seek",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+
+            // Control buttons row
+            if (!isDragging) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Reset button
+                    IconButton(
+                        onClick = onReset,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.surface,
+                                shape = CircleShape
+                            )
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                                shape = CircleShape
+                            )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Reset",
+                            modifier = Modifier.size(20.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                        )
+                    }
+
+                    // Start/Pause button (main action)
+                    FloatingActionButton(
+                        onClick = {
+                            when (timerState) {
+                                TimerState.STOPPED -> onStart()
+                                TimerState.RUNNING -> onPause()
+                                TimerState.PAUSED -> onStart()
+                            }
+                        },
+                        containerColor = profile.getColor(),
+                        modifier = Modifier.size(56.dp),
+                        elevation = FloatingActionButtonDefaults.elevation(
+                            defaultElevation = 4.dp,
+                            pressedElevation = 8.dp
+                        )
+                    ) {
+                        Icon(
+                            imageVector = when (timerState) {
+                                TimerState.STOPPED -> Icons.Default.PlayArrow
+                                TimerState.RUNNING -> Icons.Default.Pause
+                                TimerState.PAUSED -> Icons.Default.PlayArrow
+                            },
+                            contentDescription = when (timerState) {
+                                TimerState.STOPPED -> "Start"
+                                TimerState.RUNNING -> "Pause"
+                                TimerState.PAUSED -> "Resume"
+                            },
+                            modifier = Modifier.size(28.dp),
+                            tint = Color.White
+                        )
+                    }
+
+                    // Stop button (only when timer is active)
+                    if (timerState != TimerState.STOPPED) {
+                        IconButton(
+                            onClick = onStop, // Now calls onStop instead of onReset
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.7f),
+                                    shape = CircleShape
+                                )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Stop,
+                                contentDescription = "Stop",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    } else {
+                        // Invisible spacer to maintain layout balance
+                        Spacer(modifier = Modifier.size(44.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+private fun calculateAngleFromOffset(offset: Offset, center: Offset): Float {
+    val deltaX = offset.x - center.x
+    val deltaY = offset.y - center.y
+    val angle = atan2(deltaY, deltaX) * (180f / PI.toFloat()) + 90f
+    return if (angle < 0) angle + 360f else angle
+}
+
 
 // WorkManager class for background timer
 class TimerWorker(context: Context, params: WorkerParameters) : Worker(context, params) {
