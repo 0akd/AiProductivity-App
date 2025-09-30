@@ -19,6 +19,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,15 +30,22 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -745,7 +753,6 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
                     stopHourlyNotifications(context)
                     isScheduled = false
                 } else {
-                    // Pass the problems list here
                     scheduleHourlyNotifications(context, problems)
                     isScheduled = true
                 }
@@ -755,67 +762,63 @@ fun LeetCodeNotificationButton(problems: List<EnhancedProblemStat>) {
         }
     )
 
-    Column {
-        Button(
-            onClick = {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    val granted = ContextCompat.checkSelfPermission(
-                        context,
-                        android.Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
+    FloatingActionButton(
+        onClick = {
+            if (problems.isEmpty()) {
+                Toast.makeText(context, "Load problems first to enable notifications", Toast.LENGTH_SHORT).show()
+                return@FloatingActionButton
+            }
 
-                    if (granted) {
-                        if (isScheduled) {
-                            stopHourlyNotifications(context)
-                            isScheduled = false
-                        } else {
-                            // Pass the problems list here
-                            scheduleHourlyNotifications(context, problems)
-                            isScheduled = true
-                        }
-                    } else {
-                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                    }
-                } else {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val granted = ContextCompat.checkSelfPermission(
+                    context,
+                    android.Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
+
+                if (granted) {
                     if (isScheduled) {
                         stopHourlyNotifications(context)
                         isScheduled = false
+                        Toast.makeText(context, "Notifications stopped", Toast.LENGTH_SHORT).show()
                     } else {
-                        // Pass the problems list here
                         scheduleHourlyNotifications(context, problems)
                         isScheduled = true
+                        Toast.makeText(context, "Notifications started", Toast.LENGTH_SHORT).show()
                     }
+                } else {
+                    permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                 }
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp),
-            colors = if (isScheduled) {
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error
-                )
             } else {
-                ButtonDefaults.buttonColors()
-            },
-            enabled = problems.isNotEmpty() // Disable if no problems
-        ) {
-            Text(
-                if (isScheduled) "Stop Hourly Notifications" else "Start Hourly Notifications"
-            )
+                if (isScheduled) {
+                    stopHourlyNotifications(context)
+                    isScheduled = false
+                    Toast.makeText(context, "Notifications stopped", Toast.LENGTH_SHORT).show()
+                } else {
+                    scheduleHourlyNotifications(context, problems)
+                    isScheduled = true
+                    Toast.makeText(context, "Notifications started", Toast.LENGTH_SHORT).show()
+                }
+            }
+        },
+        modifier = Modifier.size(48.dp), // Smaller size for better fit
+        containerColor = if (isScheduled) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.primary
+        },
+        contentColor = if (isScheduled) {
+            MaterialTheme.colorScheme.onError
+        } else {
+            MaterialTheme.colorScheme.onPrimary
         }
-
-        // Show status text
-        if (problems.isEmpty()) {
-            Text(
-                text = "Load problems first to enable notifications",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 16.dp)
-            )
-        }
+    ) {
+        Icon(
+            imageVector = if (isScheduled) Icons.Default.NotificationsOff else Icons.Default.Notifications,
+            contentDescription = if (isScheduled) "Stop Notifications" else "Start Notifications",
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
-// Broadcast Receiver for handling scheduled notifications
 class LeetCodeNotificationReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         Log.d("LeetCodeNotification", "Hourly notification triggered")
@@ -936,11 +939,17 @@ fun LeetCodeScreen(
     notificationProblemSlug: String? = null,
     onNotificationHandled: () -> Unit = {}
 ) {
-    var problems by remember { mutableStateOf<List<EnhancedProblemStat>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var selectedProblem by remember { mutableStateOf<EnhancedProblemStat?>(null) }
-    val context = LocalContext.current
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        // Your existing content
+        var problems by remember { mutableStateOf<List<EnhancedProblemStat>>(emptyList()) }
+        var isLoading by remember { mutableStateOf(true) }
+        var errorMessage by remember { mutableStateOf<String?>(null) }
+        var selectedProblem by remember { mutableStateOf<EnhancedProblemStat?>(null) }
+        val context = LocalContext.current
+
     var checkedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     LaunchedEffect(notificationProblemSlug, problems) {
         if (notificationProblemSlug != null && problems.isNotEmpty()) {
@@ -1020,29 +1029,29 @@ fun LeetCodeScreen(
             url = "https://leetcode.com/problems/${selectedProblem!!.stat.question__title_slug}/",
             onBackClick = { selectedProblem = null }
         )
-        return
+        return@Surface
     }
 
     // Show main screen
-    Column(modifier = Modifier.fillMaxSize()) {
-        when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Loading LeetCode problems...")
-                        Text(
-                            text = "Matching with priority arrays...",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+        Column(modifier = Modifier.fillMaxSize()) {
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Loading LeetCode problems...")
+                            Text(
+                                text = "Matching with priority arrays...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
-            }
 
             errorMessage != null -> {
                 Box(
@@ -1082,23 +1091,30 @@ fun LeetCodeScreen(
                         .padding(16.dp)
                 ) {
                     item {
-                        val matchedCount = problems.count { it.priority > 0 }
-                        Column {
-                            Text(
-                                text = "LeetCode Problems (${problems.size})",
-                                style = MaterialTheme.typography.headlineMedium,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                            Text(
-                                text = "Matched with arrays: $matchedCount",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(bottom = 16.dp)
-                            )
-LeetCodeNotificationButton(problems)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                val matchedCount = problems.count { it.priority > 0 }
+                                Text(
+                                    text = "LeetCode Problems (${problems.size})",
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Text(
+                                    text = "Matched with arrays: $matchedCount",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(bottom = 16.dp)
+                                )
+                            }
+
+                            // Notification button positioned to the right of the heading
+                            LeetCodeNotificationButton(problems)
                         }
                     }
-
                     items(problems) { problem ->
                         val slug = problem.stat.question__title_slug ?: ""
                         val categoryInfo = categoryMap[slug] ?: ProblemCategory()
@@ -1244,7 +1260,7 @@ LeetCodeNotificationButton(problems)
                                 }
                             }
                         }
-                    }
+                    }}
                 }
             }
         }

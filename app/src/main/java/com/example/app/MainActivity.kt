@@ -1,5 +1,3 @@
-@file:OptIn(ExperimentalMaterial3Api::class)
-
 package com.arjundubey.app
 
 import android.app.AlarmManager
@@ -78,6 +76,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 
 
+
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import io.ktor.http.ContentType
@@ -87,6 +86,7 @@ data class ThemeToggle(val isDark: Boolean, val toggle: (Boolean) -> Unit)
 val LocalThemeToggle = compositionLocalOf {
     ThemeToggle(false) {}
 }
+
 fun createNotificationChannel(context: Context) {
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val name = "LeetCode Problems"
@@ -215,6 +215,8 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
         // Create LeetCode notification channel
         createLeetCodeNotificationChannel(this)
 
+        // In your MainActivity onCreate() method, replace the setContent block:
+
         setContent {
             val context = LocalContext.current
             val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
@@ -222,6 +224,10 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
 
             var isPremium by remember { mutableStateOf(false) }
             val user = remember { mutableStateOf(FirebaseAuth.getInstance().currentUser) }
+
+            // Keep your existing state variables
+            var showTextFileScreen by remember { mutableStateOf(false) }
+            var textFileParams by remember { mutableStateOf<TextFileScreenParams?>(null) }
 
             // Your existing LaunchedEffects...
             LaunchedEffect(Unit) {
@@ -249,8 +255,8 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 prefs.edit().putBoolean("is_dark", it).apply()
             }) {
                 MyApplicationTheme(darkTheme = isDarkTheme) {
-                    // Pass notification data to MainScreen
-                    MainScreen(
+                    // Use the navigation-enabled MainScreen
+                    MainScreen(  // or MainScreen with navigation state
                         isPremium = isPremium,
                         notificationProblemSlug = notificationProblemSlug,
                         notificationProblemUrl = notificationProblemUrl,
@@ -258,7 +264,6 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                             notificationProblemSlug = null
                             notificationProblemUrl = null
                         },
-                        // Add callback to handle boot rescheduling when problems are loaded
                         onProblemsLoaded = { problems ->
                             handleLeetCodeBootRescheduling(problems)
                         }
@@ -266,6 +271,12 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
                 }
             }
         }
+
+// Don't forget to add these imports if using Navigation Compose:
+// import androidx.navigation.compose.*
+// import androidx.navigation.NavType
+// import java.net.URLEncoder
+// import java.net.URLDecoder
     }
 
     override fun onNewIntent(intent: Intent?) {
@@ -392,36 +403,45 @@ fun WebsitesList() {
     }
 }
 
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     isPremium: Boolean,
     notificationProblemSlug: String?,
     notificationProblemUrl: String?,
     onNotificationHandled: () -> Unit,
-    onProblemsLoaded: (List<EnhancedProblemStat>) -> Unit // Add this parameter
+    onProblemsLoaded: (List<EnhancedProblemStat>) -> Unit
 ) {
     val context = LocalContext.current
-    val drawerState = rememberDrawerState(DrawerValue.Closed) // ✅ Declare this
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+    var showTextFileScreen by remember { mutableStateOf(false) }
+    var textFileParams by remember { mutableStateOf<TextFileScreenParams?>(null) }
 
+    // Add state to remember the file system navigation path
+    var fileSystemNavigationPath by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    // Add navigation state for TextFileScreen
 
 
     var currentScreen by remember { mutableStateOf("Tasks") } // default
-    LaunchedEffect(notificationProblemSlug) {
 
+    // ... your existing LaunchedEffects remain the same ...
+    LaunchedEffect(notificationProblemSlug) {
         if (notificationProblemSlug != null) {
             currentScreen = "Problems"
             ScreenPrefs.saveScreen(context, "Problems")
         }
     }
+
     LaunchedEffect(Unit) {
         currentScreen = ScreenPrefs.getSavedScreen(context)
     }
+
     LaunchedEffect(Unit) {
         val cachedProblems = getCachedProblems(context)
-        val savedProblemIds = getSavedProblems(context) // Import this function
-
-        // Filter cached problems to only include saved ones, or use as needed
+        val savedProblemIds = getSavedProblems(context)
         val filteredProblems = if (savedProblemIds.isNotEmpty()) {
             cachedProblems.filter { problem ->
                 savedProblemIds.contains(problem.stat.question__title_slug) ||
@@ -430,7 +450,6 @@ fun MainScreen(
         } else {
             cachedProblems
         }
-
         onProblemsLoaded(filteredProblems)
         Log.d("MainScreen", "Loaded ${filteredProblems.size} problems (${savedProblemIds.size} saved)")
     }
@@ -438,33 +457,43 @@ fun MainScreen(
     val auth = remember { FirebaseAuth.getInstance() }
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
 
-    // Listen for auth state changes
     LaunchedEffect(Unit) {
         val authStateListener = FirebaseAuth.AuthStateListener { firebaseAuth ->
             isLoggedIn = firebaseAuth.currentUser != null
         }
         auth.addAuthStateListener(authStateListener)
     }
+
     fun changeScreen(screen: String) {
         currentScreen = screen
         ScreenPrefs.saveScreen(context, screen)
         scope.launch { drawerState.close() }
     }
 
-    val websites = listOf(
-        WebsiteInfo(
-            title = "Google",
-            url = "https://unstop.com/hackathons",
-            description = "Search the world's information"
-        ),
-        WebsiteInfo(
-            title = "Google",
-            url = "https://arjundubey.vercel.app/",
-            description = "Search the world's information"
-        ),
-        // ... more websites
-    )
-
+    // Handle TextFileScreen display
+    // Handle TextFileScreen display
+    if (showTextFileScreen && textFileParams != null) {
+        TextFileScreen(
+            courseName = textFileParams!!.courseName,
+            subjectName = textFileParams!!.subjectName,
+            chapterName = textFileParams!!.chapterName,
+            fileName = textFileParams!!.fileName,
+            onBackPressed = {
+                showTextFileScreen = false
+                textFileParams = null
+            },
+            onNavigateToFileSystem = { pathSegments ->
+                // Enhanced back navigation - return to FileSystemScreen with the specific path
+                showTextFileScreen = false
+                textFileParams = null
+                // Set the navigation path so FileSystemScreen opens at the correct location
+                fileSystemNavigationPath = pathSegments
+                currentScreen = "Mission"
+                ScreenPrefs.saveScreen(context, "Mission")
+            }
+        )
+        return // Early return to show TextFileScreen
+    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
@@ -482,7 +511,6 @@ fun MainScreen(
                             .padding(8.dp),
                         horizontalArrangement = Arrangement.End
                     ) {
-
                         IconButton(
                             onClick = { scope.launch { drawerState.close() } }
                         ) {
@@ -499,13 +527,12 @@ fun MainScreen(
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(start = 16.dp, bottom = 8.dp)
                     )
-                    Divider()
-
+                    HorizontalDivider()
 
                     val screens = if (isPremium) {
-                        listOf("Home", "Tasks","Login/Signup")// "Scrape", "Premium Features", "Donate"
+                        listOf("Home", "Tasks","Login/Signup")
                     } else {
-                        listOf( "Home","Problems","Oppurtunities","Ex","Tasks","Research","Resume","Login/Signup","admin","course" )//"Buy Premium""Scrape","Donate","Leet"
+                        listOf( "Steps","Mission","Home","Problems","Oppurtunities","Ex","Tasks","Research","Resume","Login/Signup","admin","course" )
                     }
 
                     screens.forEach { screen ->
@@ -518,20 +545,18 @@ fun MainScreen(
         }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Floating Menu Icon
+            // Top App Bar
             val screenTitles = mapOf(
                 "Home" to "Home",
                 "Tasks" to "Tasks",
-//                "Donate" to "Support Us",
-//                "Scrape" to "Hackathon Scraper",
-//                "Buy Premium" to "Upgrade",
-//                "Premium Features" to "Premium Tools",
-                "Login/Signup" to "Login/Signup"
+                "Login/Signup" to "Login/Signup",
+                "Mission" to "File Browser"
             )
+
             TopAppBar(
                 title = { Text(screenTitles[currentScreen] ?: "My App") },
-                actions = {      val themeToggle = LocalThemeToggle.current
-
+                actions = {
+                    val themeToggle = LocalThemeToggle.current
                     IconButton(
                         onClick = {
                             themeToggle.toggle(!themeToggle.isDark)
@@ -545,11 +570,7 @@ fun MainScreen(
                     }
                     IconButton(
                         onClick = { scope.launch { drawerState.open() } },
-                        modifier = Modifier
-
-
-                            .zIndex(1f) // Ensure it's above other content
-
+                        modifier = Modifier.zIndex(1f)
                     ) {
                         Icon(Icons.Default.Menu, contentDescription = "Menu", tint = MaterialTheme.colorScheme.onBackground)
                     }
@@ -567,10 +588,10 @@ fun MainScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = 0.dp) // Add top padding if needed to avoid overlap
+                    .padding(top = 0.dp)
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures { change, dragAmount ->
-                            if (dragAmount > 100) { // 🔥 Require at least 30 pixels swipe right
+                            if (dragAmount > 100) {
                                 scope.launch {
                                     if (drawerState.isClosed) drawerState.open()
                                 }
@@ -582,45 +603,69 @@ fun MainScreen(
                     "Home" -> HomeScreen()
                     "Tasks" -> CardListManager()
                     "Oppurtunities" -> ScraperScreen()
-"Resume"->ResumeBuilderApp()
-                    "Login/Signup"->Box(    modifier = Modifier
-                        .fillMaxSize()
-
-                        .background(MaterialTheme.colorScheme.background),){  AuthScreen(
-                        onLoginSuccess = {
-                            isLoggedIn = true
-                        }
-                    )}
-//                    "Full" -> Hack()
+                    "Resume" -> ResumeBuilderApp()
+                    "Login/Signup" -> Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.background),
+                    ) {
+                        AuthScreen(
+                            onLoginSuccess = {
+                                isLoggedIn = true
+                            }
+                        )
+                    }
                     "Problems" -> LeetCodeScreen(
                         notificationProblemSlug = notificationProblemSlug,
                         onNotificationHandled = onNotificationHandled
                     )
-                    "admin"->AdminScreen()
-                    "course"->CardDisplayScreen()
-"Ex"->ExerciseTimerScreen()
-//                    "Buy Premium" -> PremiumScreen {
-//                        // You can do any of these:
-//                        // - Show a toast
-//                        // - Update a state
-//                        // - Navigate to another screen
-//                        // - Log analytics event
-//
-//                        Toast.makeText(context, "Welcome to Premium!", Toast.LENGTH_SHORT).show()
-//                        currentScreen = "Home" // Optional: auto-redirect to Home
-//                    }
-//                    "Donate" -> Box(    modifier = Modifier
-//                        .fillMaxSize()
-//
-//                        .background(MaterialTheme.colorScheme.background),){DonationScreen()}
-////                    "Premium Features"->Renaem()
-//                 // 👈 Add this line
-                }
+                    "admin" -> AdminScreen()
+                    "course" -> CardDisplayScreen()
+                    "Ex" -> ExerciseTimerScreen()
+                    "Steps"-> TileScreen()
+                    "Mission" -> FileSystemScreen(
+                        // ✅ Enhanced navigation callback with path preservation
+                        navigationCallback = object : FileNavigationCallback {
+                            override fun navigateToTextFile(
+                                courseName: String,
+                                subjectName: String,
+                                chapterName: String,
+                                fileName: String
+                            ) {
+                                textFileParams = TextFileScreenParams(
+                                    courseName = courseName,
+                                    subjectName = subjectName,
+                                    chapterName = chapterName,
+                                    fileName = fileName
+                                )
+                                showTextFileScreen = true
+                                // Store the current path for back navigation
+                                fileSystemNavigationPath = listOf(courseName, subjectName, chapterName)
+                                    .filter { it != "default_course" && it != "default_subject" && it != "default_chapter" }
+                            }
+
+                            override fun navigateBack() {
+                                currentScreen = "Home"
+                                ScreenPrefs.saveScreen(context, "Home")
+                            }
+                        },
+                        initialPath = fileSystemNavigationPath // Pass the initial path
+                    )
+
+                    "Research" -> SearchLauncherScreen()
                 }
             }
-
         }
     }
+}
+
+// Data class to hold text file parameters
+data class TextFileScreenParams(
+    val courseName: String,
+    val subjectName: String,
+    val chapterName: String,
+    val fileName: String
+)
 
 
 object ScreenPrefs {
@@ -732,7 +777,7 @@ fun DonationScreen() {
                 }
             },
             modifier = Modifier.fillMaxWidth(),
-                    colors= ButtonDefaults.buttonColors(MaterialTheme.colorScheme.onSecondaryContainer)
+            colors= ButtonDefaults.buttonColors(MaterialTheme.colorScheme.onSecondaryContainer)
         ) {
             Text("Donate ₹$amount")
 

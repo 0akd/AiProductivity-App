@@ -7,25 +7,29 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
-val SemiTransparentPink = Color(0x80F498AD) // 0x80 = 50% alpha
+val SemiTransparentBlue = Color(0x8080D0FF) // 0x80 = 50% alpha, light blue
+
+// Blue color definitions (replacing purple)
+val Blue40 = Color(0xFF3454D1)  // Primary blue for light theme
+val Blue80 = Color(0xFF7B9AFF)  // Primary blue for dark theme
+val BlueGrey40 = Color(0xFF5C6BC0)  // Secondary blue-grey for light theme
+val BlueGrey80 = Color(0xFF9FA8DA)  // Secondary blue-grey for dark theme
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
+    primary = Blue40,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFE0D7FF),       // Light lavender
-    onPrimaryContainer = Color(0xFF1E0061),
+    primaryContainer = Color(0xFFD7E3FF),       // Light blue
+    onPrimaryContainer = Color(0xFF001B3D),
 
-
-    secondary = PurpleGrey40,
+    secondary = BlueGrey40,
     onSecondary = Color.White,
-    secondaryContainer = Color(0xFFE5E0F2),     // Pale gray-purple
-    onSecondaryContainer = Color(0xFF2F2A3A),
+    secondaryContainer = Color(0xFFE0E2F2),     // Pale gray-blue
+    onSecondaryContainer = Color(0xFF2A2A3A),
     tertiary = Color.LightGray,
 
     onTertiary = Color.White,
-    tertiaryContainer = Color(0xFFFFD6E8),      // Light pink
-    onTertiaryContainer = Color(0xFF4D0030),
- // Correct 8-digit ARGB hex
+    tertiaryContainer = Color(0xFFD6E8FF),      // Light blue
+    onTertiaryContainer = Color(0xFF003052),
 
     background = Color.White,
     onBackground = Color.Black,
@@ -35,20 +39,20 @@ private val LightColorScheme = lightColorScheme(
 )
 
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
+    primary = Blue80,
     onPrimary = Color.Black,
-    primaryContainer = Color(0xFF4A408A),       // Dark lavender
-    onPrimaryContainer = Color(0xFFF0E8FF),
+    primaryContainer = Color(0xFF2A408A),       // Dark blue
+    onPrimaryContainer = Color(0xFFE8F0FF),
 
-    secondary = PurpleGrey80,
+    secondary = BlueGrey80,
     onSecondary = Color.Black,
-    secondaryContainer = Color(0xFF3D3A51),     // Dark gray-purple
-    onSecondaryContainer = Color(0xFFE5E0F2),
-    tertiary = SemiTransparentPink,
+    secondaryContainer = Color(0xFF3D3A51),     // Dark gray-blue
+    onSecondaryContainer = Color(0xFFE0E2F2),
+    tertiary = SemiTransparentBlue,
 
     onTertiary = Color.Black,
-    tertiaryContainer = Color(0xFF633B54),      // Dark pink-brown
-    onTertiaryContainer = Color(0xFFFFD6E8),
+    tertiaryContainer = Color(0xFF3B5463),      // Dark blue-gray
+    onTertiaryContainer = Color(0xFFD6E8FF),
 
     background = Color(0xFF121212),
     onBackground = Color.White,
@@ -56,18 +60,6 @@ private val DarkColorScheme = darkColorScheme(
     surface = Color(0xFF1E1E1E),                // Dark card surface
     onSurface = Color(0xFFECECEC),
 )
-
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
-
 
 @Composable
 fun MyApplicationTheme(

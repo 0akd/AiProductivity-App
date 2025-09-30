@@ -110,7 +110,11 @@ class ExerciseTimerViewModel : ViewModel() {
 
     private val _profiles = MutableLiveData<List<ExerciseProfile>>(emptyList())
     val profiles: LiveData<List<ExerciseProfile>> = _profiles
-
+    fun setDirectTimer(seconds: Int) {
+        _remainingSeconds.value = seconds
+        _totalSeconds.value = seconds
+        _timerState.value = TimerState.STOPPED
+    }
     private val _selectedProfileIndex = MutableLiveData(0)
     val selectedProfileIndex: LiveData<Int> = _selectedProfileIndex
 
@@ -581,7 +585,12 @@ class ExerciseTimerViewModel : ViewModel() {
 }
 
 @Composable
-fun ExerciseTimerScreen(viewModel: ExerciseTimerViewModel = androidx.lifecycle.viewmodel.compose.viewModel()) {
+fun ExerciseTimerScreen(
+    viewModel: ExerciseTimerViewModel = androidx.lifecycle.viewmodel.compose.viewModel(),
+    directSeconds: Int? = null, // Add this parameter
+    directProfileName: String? = null, // Optional: if you want to show a name
+    directColor: String? = null // Optional: if you want a specific color
+) {
     val context = LocalContext.current
     val profiles by viewModel.profiles.observeAsState(emptyList())
     val selectedProfileIndex by viewModel.selectedProfileIndex.observeAsState(0)
@@ -593,12 +602,36 @@ fun ExerciseTimerScreen(viewModel: ExerciseTimerViewModel = androidx.lifecycle.v
     val isLoading by viewModel.isLoading.observeAsState(false)
     val errorMessage by viewModel.errorMessage.observeAsState(null)
 
-    val currentProfile = if (selectedProfileIndex < profiles.size) profiles[selectedProfileIndex] else null
+    // Handle direct timer mode
+    val isDirectMode = directSeconds != null
+    val currentProfile = if (isDirectMode) {
+        // Create a temporary profile for direct mode
+        ExerciseProfile(
+            name = directProfileName ?: "Custom Timer",
+            defaultMinutes = (directSeconds ?: 0) / 60,
+            colorHex = directColor ?: "#4CAF50"
+        )
+    } else if (selectedProfileIndex < profiles.size) {
+        profiles[selectedProfileIndex]
+    } else {
+        null
+    }
+
+    // Set up direct timer when screen loads
+    LaunchedEffect(directSeconds) {
+        if (directSeconds != null) {
+            viewModel.stopTimer(context) // Ensure timer is stopped
+            viewModel.seekToTime(directSeconds)
+            viewModel.pauseTimer(context) // Start in paused state
+        }
+    }
 
     // Create notification channel
     LaunchedEffect(Unit) {
         createNotificationChannel(context)
     }
+
+    // Rest of your existing UI code remains the same...exercise
 
     // Show error messages
     errorMessage?.let { message ->

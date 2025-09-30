@@ -1,5 +1,5 @@
 [versions]
-agp = "8.11.1"
+agp = "8.12.3"
 kotlin = "2.0.21"
 coreKtx = "1.10.1"
 junit = "4.13.2"
@@ -19,6 +19,7 @@ okhttp = "4.12.0"
 
 selenium = "4.20.0"
 jsoup = "1.17.2"
+ui = "1.9.2"
 [libraries]
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 
@@ -47,6 +48,7 @@ okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhtt
 
 selenium-java = { module = "org.seleniumhq.selenium:selenium-java", version.ref = "selenium" }
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+androidx-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "ui" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
