@@ -425,7 +425,7 @@ fun MainScreen(
     // Add navigation state for TextFileScreen
 
 
-    var currentScreen by remember { mutableStateOf("Tasks") } // default
+    var currentScreen by remember { mutableStateOf("Problems") } // default
 
     // ... your existing LaunchedEffects remain the same ...
     LaunchedEffect(notificationProblemSlug) {
@@ -532,7 +532,7 @@ fun MainScreen(
                     val screens = if (isPremium) {
                         listOf("Home", "Tasks","Login/Signup")
                     } else {
-                        listOf( "Steps","Mission","Home","Problems","Oppurtunities","Ex","Tasks","Research","Resume","Login/Signup","admin","course" )
+                        listOf( "pdf","Resume","Problems","Hackathons","Internships","Jobs","Research","Login/Signup" )
                     }
 
                     screens.forEach { screen ->
@@ -547,14 +547,17 @@ fun MainScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             // Top App Bar
             val screenTitles = mapOf(
-                "Home" to "Home",
-                "Tasks" to "Tasks",
+                "Hackathons" to "Hackathons",
+                "Internships" to "Internships",
                 "Login/Signup" to "Login/Signup",
-                "Mission" to "File Browser"
+                "Home" to "Welcome Home",
+                "Problems" to "LeetCode Problems",
+                "Resume" to "Resume",
+                "Research" to "Know",
             )
 
             TopAppBar(
-                title = { Text(screenTitles[currentScreen] ?: "My App") },
+                title = { Text(screenTitles[currentScreen] ?: "TheONE") },
                 actions = {
                     val themeToggle = LocalThemeToggle.current
                     IconButton(
@@ -600,9 +603,13 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
+                    "pdf"->PdfViewerScreen()
                     "Home" -> HomeScreen()
+                    "Music"->MP3PlayerScreen()
+                    "Internships"-> ScraperJobScreen()
                     "Tasks" -> CardListManager()
-                    "Oppurtunities" -> ScraperScreen()
+                    "Jobs"->JobSearchScreen()
+                    "Hackathons" -> ScraperScreen()
                     "Resume" -> ResumeBuilderApp()
                     "Login/Signup" -> Box(
                         modifier = Modifier
@@ -619,6 +626,7 @@ fun MainScreen(
                         notificationProblemSlug = notificationProblemSlug,
                         onNotificationHandled = onNotificationHandled
                     )
+
                     "admin" -> AdminScreen()
                     "course" -> CardDisplayScreen()
                     "Ex" -> ExerciseTimerScreen()
@@ -679,7 +687,7 @@ object ScreenPrefs {
 
     fun getSavedScreen(context: Context): String {
         val prefs: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_CURRENT_SCREEN, "Tasks") ?: "Tasks"
+        return prefs.getString(KEY_CURRENT_SCREEN, "Home") ?: "Home"
     }
 }
 

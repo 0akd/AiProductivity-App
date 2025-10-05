@@ -78,110 +78,490 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import androidx.work.*
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
 object QuestionArrays {
     val array1 = listOf(
-        "find-the-duplicate-number",
-        "sort-colors",
-        "remove-duplicates-from-sorted-array",
-        "set-matrix-zeroes",
-        "move-zeroes",
-        "best-time-to-buy-and-sell-stock",
-        "maximum-subarray",
-        "merge-intervals",
-        "next-permutation",
-        "pascals-triangle"
-    )
-
-    val array2 = listOf(
-        "set-matrix-zeroes",
-        "merge-sorted-array",
-        "majority-element",
-        "reverse-pairs",
-        "print-all-possible-combinations-of-r-elements-in-a-given-array-of-size-n",
-        "game-of-life",
-        "max-value-of-equation",
-        "insert-delete-getrandom-o1-duplicates-allowed",
-        "rotate-image",
-        "spiral-matrix"
-    )
-
-    val array3 = listOf(
+        // Arrays - EASY
         "two-sum",
-        "three-sum",
-        "four-sum",
+        "best-time-to-buy-and-sell-stock",
+        "plus-one",
+        "move-zeroes",
+        "best-time-to-buy-and-sell-stock-ii",
+        "running-sum-of-1d-array",
+        "find-pivot-index",
+        "majority-element",
+        "fibonacci-number",
+        "squares-of-a-sorted-array",
+        "pascals-triangle",
+        "remove-duplicates-from-sorted-array",
+
+        // Arrays - MEDIUM
+        "merge-intervals",
+        "3sum",
+        "product-of-array-except-self",
+        "insert-delete-getrandom-o1",
+        "subarray-sum-equals-k",
+        "next-permutation",
+        "spiral-matrix",
         "container-with-most-water",
-        "trapping-rain-water",
-        "longest-substring-without-repeating-characters",
-        "minimum-window-substring",
-        "sliding-window-maximum",
-        "find-all-anagrams-in-a-string",
-        "longest-palindromic-substring"
-    )
+        "rotate-image",
+        "word-search",
+        "3sum-closest",
+        "game-of-life",
+        "pairs-of-songs-with-total-durations-divisible-by-60",
+        "4sum",
+        "find-the-duplicate-number",
+        "combination-sum",
+        "jump-game-ii",
+        "maximum-points-you-can-obtain-from-cards",
+        "maximum-area-of-a-piece-of-cake-after-horizontal-and-vertical-cuts",
+        "max-area-of-island",
+        "find-all-duplicates-in-an-array",
+        "k-diff-pairs-in-an-array",
+        "subsets",
+        "invalid-transactions",
+        "jump-game",
+        "subarray-sums-divisible-by-k",
 
-    val array4 = listOf(
-        "binary-tree-inorder-traversal",
-        "binary-tree-preorder-traversal",
-        "binary-tree-postorder-traversal",
-        "maximum-depth-of-binary-tree",
-        "minimum-depth-of-binary-tree",
-        "balanced-binary-tree",
-        "path-sum",
-        "binary-tree-level-order-traversal",
-        "construct-binary-tree-from-preorder-and-inorder-traversal",
-        "lowest-common-ancestor-of-a-binary-tree"
-    )
+        // Arrays - HARD
+        "first-missing-positive",
+        "largest-rectangle-in-histogram",
+        "insert-delete-getrandom-o1-duplicates-allowed",
+        "best-time-to-buy-and-sell-stock-iii",
+        "max-value-of-equation",
 
-    val array5 = listOf(
+        // Recursion
+        "powx-n",
+        "valid-palindrome",
+        "subsets",
+        "permutations",
+        "permutations-ii",
+        "subsets-ii",
+        "combinations",
+        "combination-sum",
+        "combination-sum-ii",
+        "combination-sum-iii",
+        "letter-combinations-of-a-phone-number",
+        "partition-to-k-equal-sum-subsets",
+        "maximum-length-of-a-concatenated-string-with-unique-characters",
+        "flood-fill",
+        "word-search",
+        "n-queens",
+
+        // Dynamic Programming - EASY
+        "maximum-subarray",
         "climbing-stairs",
-        "house-robber",
-        "coin-change",
-        "longest-increasing-subsequence",
-        "longest-common-subsequence",
-        "edit-distance",
-        "unique-paths",
-        "minimum-path-sum",
+        "divisor-game",
+        "counting-bits",
+
+        // Dynamic Programming - MEDIUM
         "decode-ways",
-        "word-break"
-    )
+        "word-break",
+        "delete-and-earn",
+        "maximal-square",
+        "coin-change",
+        "maximum-product-subarray",
+        "maximum-length-of-repeated-subarray",
+        "palindromic-substrings",
+        "house-robber",
+        "continuous-subarray-sum",
+        "knight-dialer",
+        "longest-increasing-subsequence",
+        "unique-paths",
+        "count-square-submatrices-with-all-ones",
+        "range-sum-query-2d-immutable",
+        "longest-arithmetic-subsequence",
 
-    val array6 = listOf(
-        "valid-parentheses",
-        "generate-parentheses",
-        "minimum-remove-to-make-valid-parentheses",
+        // Dynamic Programming - HARD
+        "trapping-rain-water",
+        "word-break-ii",
+        "regular-expression-matching",
+        "maximal-rectangle",
         "longest-valid-parentheses",
-        "remove-invalid-parentheses",
-        "different-ways-to-add-parentheses",
-        "score-of-parentheses",
-        "valid-parenthesis-string",
-        "minimum-add-to-make-parentheses-valid",
-        "check-if-a-parentheses-string-can-be-valid"
-    )
+        "edit-distance",
+        "minimum-difficulty-of-a-job-schedule",
+        "frog-jump",
+        "best-time-to-buy-and-sell-stock-iv",
+        "burst-balloons",
+        "minimum-cost-to-merge-stones",
+        "minimum-insertion-steps-to-make-a-string-palindrome",
+        "super-egg-drop",
+        "count-different-palindromic-subsequences",
+        "minimum-cost-to-cut-a-stick",
 
-    val array7 = listOf(
+        // Strings - EASY
+        "add-strings",
+        "longest-common-prefix",
+        "valid-palindrome-ii",
+        "roman-to-integer",
+        "implement-strstr",
+
+        // Strings - MEDIUM
+        "longest-substring-without-repeating-characters",
+        "minimum-remove-to-make-valid-parentheses",
+        "longest-palindromic-substring",
+        "group-anagrams",
+        "generate-parentheses",
+        "basic-calculator-ii",
+        "integer-to-roman",
+        "reverse-words-in-a-string",
+        "simplify-path",
+        "zigzag-conversion",
+
+        // Strings - HARD
+        "text-justification",
+        "integer-to-english-words",
+        "minimum-window-substring",
+        "valid-number",
+        "distinct-subsequences",
+        "smallest-range-covering-elements-from-k-lists",
+        "substring-with-concatenation-of-all-words",
+
+        // Maths - EASY
+        "reverse-integer",
+        "add-binary",
+        "palindrome-number",
+        "minimum-moves-to-equal-array-elements",
+        "happy-number",
+        "excel-sheet-column-title",
+        "missing-number",
+        "maximum-product-of-three-numbers",
+        "power-of-two",
+
+        // Maths - MEDIUM
+        "encode-and-decode-tinyurl",
+        "string-to-integer-atoi",
+        "multiply-strings",
+        "angle-between-hands-of-a-clock",
+        "integer-break",
+        "valid-square",
+        "the-kth-factor-of-n",
+
+        // Maths - HARD
+        "basic-calculator",
+        "max-points-on-a-line",
+        "permutation-sequence",
+        "number-of-digit-one",
+
+        // Greedy - MEDIUM
+        "task-scheduler",
+        "gas-station",
+        "minimum-deletion-cost-to-avoid-repeating-letters",
+        "maximum-number-of-events-that-can-be-attended",
+        "minimum-deletions-to-make-character-frequencies-unique",
+        "remove-k-digits",
+        "restore-the-array-from-adjacent-pairs",
+        "non-overlapping-intervals",
+
+        // Greedy - HARD
+        "candy",
+        "minimum-number-of-taps-to-open-to-water-a-garden",
+        "create-maximum-number",
+
+        // DFS - MEDIUM
+        "letter-combinations-of-a-phone-number",
+        "course-schedule-ii",
+        "decode-string",
+        "number-of-provinces",
+        "clone-graph",
+        "shortest-bridge",
+        "all-paths-from-source-to-target",
+        "surrounded-regions",
+        "house-robber-iii",
+
+        // DFS - HARD
+        "critical-connections-in-a-network",
+        "remove-invalid-parentheses",
+        "longest-increasing-path-in-a-matrix",
+        "concatenated-words",
+        "making-a-large-island",
+        "contain-virus",
+        "24-game",
+        "remove-boxes",
+
+        // Tree - EASY
+        "diameter-of-binary-tree",
+        "invert-binary-tree",
+        "subtree-of-another-tree",
+        "range-sum-of-bst",
+        "symmetric-tree",
+        "convert-sorted-array-to-binary-search-tree",
+        "merge-two-binary-trees",
+        "maximum-depth-of-binary-tree",
+        "binary-tree-paths",
+        "same-tree",
+        "lowest-common-ancestor-of-a-binary-search-tree",
+        "path-sum",
+        "minimum-absolute-difference-in-bst",
+        "sum-of-left-leaves",
+        "balanced-binary-tree",
+        "binary-tree-inorder-traversal",
+
+        // Tree - MEDIUM
+        "count-good-nodes-in-binary-tree",
+        "lowest-common-ancestor-of-a-binary-tree",
+        "binary-tree-right-side-view",
+        "all-nodes-distance-k-in-binary-tree",
+        "validate-binary-search-tree",
+        "binary-tree-zigzag-level-order-traversal",
+        "binary-search-tree-iterator",
+        "binary-tree-level-order-traversal",
+        "path-sum-iii",
+        "construct-binary-tree-from-preorder-and-postorder-traversal",
+        "unique-binary-search-trees",
+        "recover-binary-search-tree",
+        "populating-next-right-pointers-in-each-node",
+        "flatten-binary-tree-to-linked-list",
+        "maximum-width-of-binary-tree",
+        "unique-binary-search-trees-ii",
+        "kth-smallest-element-in-a-bst",
+        "redundant-connection",
+
+        // Tree - HARD
+        "serialize-and-deserialize-binary-tree",
+        "binary-tree-maximum-path-sum",
+        "vertical-order-traversal-of-a-binary-tree",
+        "binary-tree-cameras",
+        "sum-of-distances-in-tree",
+        "number-of-ways-to-reconstruct-a-tree",
+        "redundant-connection-ii",
+
+        // Hash Table - EASY
+        "verifying-an-alien-dictionary",
+        "design-hashmap",
+
+        // Hash Table - MEDIUM
+        "top-k-frequent-elements",
+        "design-twitter",
+
+        // Binary Search - EASY
+        "sqrtx",
+        "binary-search",
+        "count-negative-numbers-in-a-sorted-matrix",
+        "peak-index-in-a-mountain-array",
+
+        // Binary Search - MEDIUM
+        "time-based-key-value-store",
+        "search-in-rotated-sorted-array",
+        "powx-n",
+        "find-first-and-last-position-of-element-in-sorted-array",
+        "find-peak-element",
+        "search-a-2d-matrix",
+        "divide-two-integers",
+        "capacity-to-ship-packages-within-d-days",
+        "minimum-limit-of-balls-in-a-bag",
+
+        // Binary Search - HARD
+        "median-of-two-sorted-arrays",
+        "count-of-smaller-numbers-after-self",
+        "max-sum-of-rectangle-no-larger-than-k",
+        "split-array-largest-sum",
+        "shortest-subarray-with-sum-at-least-k",
+
+        // BFS - MEDIUM
+        "number-of-islands",
+        "rotting-oranges",
+        "snakes-and-ladders",
+        "is-graph-bipartite",
+        "minimum-jumps-to-reach-home",
+
+        // BFS - HARD
+        "word-ladder",
+        "word-ladder-ii",
+        "cut-off-trees-for-golf-event",
+        "reachable-nodes-in-subdivided-graph",
+
+        // Two Pointer - MEDIUM/HARD
+        "partition-labels",
+        "sort-colors",
+        "longest-repeating-character-replacement",
+        "maximum-number-of-visible-points",
+        "subarrays-with-k-different-integers",
+
+        // Stack - EASY
+        "min-stack",
+        "next-greater-element-i",
+        "backspace-string-compare",
+        "implement-queue-using-stacks",
+        "implement-stack-using-queues",
+
+        // Stack - MEDIUM
+        "remove-all-adjacent-duplicates-in-string-ii",
+        "daily-temperatures",
+        "flatten-nested-list-iterator",
+        "online-stock-span",
+        "minimum-cost-tree-from-leaf-values",
+        "sum-of-subarray-minimums",
+        "evaluate-reverse-polish-notation",
+
+        // Design - MEDIUM/HARD
+        "lru-cache",
+        "find-median-from-data-stream",
+        "design-underground-system",
+        "lfu-cache",
+        "tweet-counts-per-frequency",
+        "all-oone-data-structure",
+        "design-browser-history",
+
+        // Graph - EASY
+        "employee-importance",
+        "find-the-town-judge",
+
+        // Graph - MEDIUM
+        "evaluate-division",
+        "accounts-merge",
+        "network-delay-time",
+        "find-eventual-safe-states",
+        "keys-and-rooms",
+        "possible-bipartition",
+        "most-stones-removed-with-same-row-or-column",
+        "regions-cut-by-slashes",
+        "satisfiability-of-equality-equations",
+        "as-far-from-land-as-possible",
+        "number-of-closed-islands",
+        "number-of-operations-to-make-network-connected",
+        "find-the-city-with-the-smallest-number-of-neighbors-at-a-threshold-distance",
+        "time-needed-to-inform-all-employees",
+
+        // Linked List
+        "delete-node-in-a-linked-list",
+        "middle-of-the-linked-list",
+        "convert-binary-number-in-a-linked-list-to-integer",
+        "design-hashset",
+        "design-hashmap",
         "reverse-linked-list",
-        "linked-list-cycle",
+        "reverse-nodes-in-k-group",
         "merge-two-sorted-lists",
-        "remove-nth-node-from-end-of-list",
-        "add-two-numbers",
+        "merge-k-sorted-lists",
+        "remove-duplicates-from-sorted-list",
+        "linked-list-cycle",
+        "linked-list-cycle-ii",
         "intersection-of-two-linked-lists",
         "palindrome-linked-list",
-        "reverse-nodes-in-k-group",
+        "remove-linked-list-elements",
+        "design-browser-history",
+        "lru-cache",
         "copy-list-with-random-pointer",
-        "lru-cache"
+
+        // Heap - MEDIUM
+        "k-closest-points-to-origin",
+        "kth-largest-element-in-an-array",
+        "reorganize-string",
+        "furthest-building-you-can-reach",
+        "kth-smallest-element-in-a-sorted-matrix",
+        "cheapest-flights-within-k-stops",
+        "find-the-most-competitive-subsequence",
+        "ugly-number-ii",
+
+        // Heap - HARD
+        "merge-k-sorted-lists",
+        "sliding-window-maximum",
+        "the-skyline-problem",
+        "trapping-rain-water-ii",
+        "minimum-number-of-refueling-stops",
+        "swim-in-rising-water",
+        "shortest-path-to-get-all-keys",
+        "minimum-cost-to-hire-k-workers",
+        "k-th-smallest-prime-fraction",
+
+        // Sliding Window - MEDIUM/HARD
+        "longest-substring-with-at-least-k-repeating-characters",
+        "max-consecutive-ones-iii",
+        "grumpy-bookstore-owner",
+        "sliding-window-median"
     )
+
+//    val array2 = listOf(
+//        "set-matrix-zeroes",
+//        "merge-sorted-array",
+//        "majority-element",
+//        "reverse-pairs",
+//        "print-all-possible-combinations-of-r-elements-in-a-given-array-of-size-n",
+//        "game-of-life",
+//        "max-value-of-equation",
+//        "insert-delete-getrandom-o1-duplicates-allowed",
+//        "rotate-image",
+//        "spiral-matrix"
+//    )
+//
+//    val array3 = listOf(
+//        "two-sum",
+//        "three-sum",
+//        "four-sum",
+//        "container-with-most-water",
+//        "trapping-rain-water",
+//        "longest-substring-without-repeating-characters",
+//        "minimum-window-substring",
+//        "sliding-window-maximum",
+//        "find-all-anagrams-in-a-string",
+//        "longest-palindromic-substring"
+//    )
+//
+//    val array4 = listOf(
+//        "binary-tree-inorder-traversal",
+//        "binary-tree-preorder-traversal",
+//        "binary-tree-postorder-traversal",
+//        "maximum-depth-of-binary-tree",
+//        "minimum-depth-of-binary-tree",
+//        "balanced-binary-tree",
+//        "path-sum",
+//        "binary-tree-level-order-traversal",
+//        "construct-binary-tree-from-preorder-and-inorder-traversal",
+//        "lowest-common-ancestor-of-a-binary-tree"
+//    )
+//
+//    val array5 = listOf(
+//        "climbing-stairs",
+//        "house-robber",
+//        "coin-change",
+//        "longest-increasing-subsequence",
+//        "longest-common-subsequence",
+//        "edit-distance",
+//        "unique-paths",
+//        "minimum-path-sum",
+//        "decode-ways",
+//        "word-break"
+//    )
+//
+//    val array6 = listOf(
+//        "valid-parentheses",
+//        "generate-parentheses",
+//        "minimum-remove-to-make-valid-parentheses",
+//        "longest-valid-parentheses",
+//        "remove-invalid-parentheses",
+//        "different-ways-to-add-parentheses",
+//        "score-of-parentheses",
+//        "valid-parenthesis-string",
+//        "minimum-add-to-make-parentheses-valid",
+//        "check-if-a-parentheses-string-can-be-valid"
+//    )
+//
+//    val array7 = listOf(
+//        "reverse-linked-list",
+//        "linked-list-cycle",
+//        "merge-two-sorted-lists",
+//        "remove-nth-node-from-end-of-list",
+//        "add-two-numbers",
+//        "intersection-of-two-linked-lists",
+//        "palindrome-linked-list",
+//        "reverse-nodes-in-k-group",
+//        "copy-list-with-random-pointer",
+//        "lru-cache"
+//    )
 
     // Get all arrays with their indices
     fun getAllArrays(): List<Pair<Int, List<String>>> {
         return listOf(
             1 to array1,
-            2 to array2,
-            3 to array3,
-            4 to array4,
-            5 to array5,
-            6 to array6,
-            7 to array7
+//            2 to array2,
+//            3 to array3,
+//            4 to array4,
+//            5 to array5,
+//            6 to array6,
+//            7 to array7
         )
     }
 }
@@ -932,7 +1312,76 @@ suspend fun fetchProblemCategory(slug: String): ProblemCategory {
 }
 
 
+private const val KEY_LAST_FETCH_TIME = "LastFetchTime" // NEW
+private const val KEY_CACHED_ENHANCED_PROBLEMS = "CachedEnhancedProblems" // NEW
+private const val CACHE_DURATION = 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+// Save enhanced problems to cache
+fun saveEnhancedProblemsToCache(context: Context, problems: List<EnhancedProblemStat>) {
+    val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val editor = sharedPreferences.edit()
+    val json = Gson().toJson(problems)
+    editor.putString(KEY_CACHED_ENHANCED_PROBLEMS, json)
+    editor.putLong(KEY_LAST_FETCH_TIME, System.currentTimeMillis())
+    editor.apply()
+    Log.d("Cache", "Saved ${problems.size} enhanced problems to cache")
+}
+private suspend fun fetchLeetCodeProblemsWithRetry(
+    maxRetries: Int = 3,
+    initialDelay: Long = 1000
+): List<ProblemStat> {
+    var lastException: Exception? = null
 
+    for (attempt in 1..maxRetries) {
+        try {
+            Log.d("Network", "Attempt $attempt to fetch problems")
+            return fetchLeetCodeProblems()
+        } catch (e: Exception) {
+            lastException = e
+            Log.w("Network", "Attempt $attempt failed: ${e.message}")
+
+            if (attempt < maxRetries) {
+                val delayTime = initialDelay * attempt
+                Log.d("Network", "Retrying in ${delayTime}ms...")
+                delay(delayTime)
+            }
+        }
+    }
+
+    throw lastException ?: Exception("Failed to fetch problems after $maxRetries attempts")
+}
+// Get cached enhanced problems
+fun getCachedEnhancedProblems(context: Context): List<EnhancedProblemStat> {
+    val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val json = sharedPreferences.getString(KEY_CACHED_ENHANCED_PROBLEMS, null)
+    return if (json != null) {
+        try {
+            val type = object : TypeToken<List<EnhancedProblemStat>>() {}.type
+            Gson().fromJson<List<EnhancedProblemStat>>(json, type) ?: emptyList()
+        } catch (e: Exception) {
+            Log.e("Cache", "Error parsing cached enhanced problems: ${e.message}")
+            emptyList()
+        }
+    } else {
+        emptyList()
+    }
+}
+
+// Check if cache is valid (less than 24 hours old)
+fun isCacheValid(context: Context): Boolean {
+    val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val lastFetchTime = sharedPreferences.getLong(KEY_LAST_FETCH_TIME, 0)
+    return System.currentTimeMillis() - lastFetchTime < CACHE_DURATION
+}
+
+// Clear cache (for force refresh)
+fun clearCache(context: Context) {
+    val sharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    val editor = sharedPreferences.edit()
+    editor.remove(KEY_CACHED_ENHANCED_PROBLEMS)
+    editor.remove(KEY_LAST_FETCH_TIME)
+    editor.apply()
+    Log.d("Cache", "Cache cleared")
+}
 // Modified LeetCodeScreen with category fetching
 @Composable
 fun LeetCodeScreen(
@@ -943,96 +1392,197 @@ fun LeetCodeScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        // Your existing content
         var problems by remember { mutableStateOf<List<EnhancedProblemStat>>(emptyList()) }
-        var isLoading by remember { mutableStateOf(true) }
+        var isLoading by remember { mutableStateOf(false) }
         var errorMessage by remember { mutableStateOf<String?>(null) }
         var selectedProblem by remember { mutableStateOf<EnhancedProblemStat?>(null) }
+        var isUsingCachedData by remember { mutableStateOf(false) }
+        var showRefreshButton by remember { mutableStateOf(false) }
         val context = LocalContext.current
 
-    var checkedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
-    LaunchedEffect(notificationProblemSlug, problems) {
-        if (notificationProblemSlug != null && problems.isNotEmpty()) {
-            val problemToOpen = problems.find {
-                it.stat.question__title_slug == notificationProblemSlug
-            }
-            if (problemToOpen != null) {
-                selectedProblem = problemToOpen
-                onNotificationHandled() // Clear the notification slug
-            }
-        }
-    }
+        var checkedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
+        var categoryMap by remember { mutableStateOf<Map<String, ProblemCategory>>(emptyMap()) }
+        var isRefreshing by remember { mutableStateOf(false) }
 
-    // Map to store category titles for each problem slug
-    var categoryMap by remember { mutableStateOf<Map<String, ProblemCategory>>(emptyMap()) }
 
-    LaunchedEffect(Unit) {
-        try {
+        // Refresh function - NOT composable, just a regular function
+        val refreshData = {
             isLoading = true
             errorMessage = null
-
-            val fetchedProblems = fetchLeetCodeProblems()
-
-            // Move context-dependent code here using the context we got earlier
-            val savedSlugs = getSavedProblems(context).toMutableSet()
-            val newProblems = fetchedProblems.filterNot { savedSlugs.contains(it.stat.question__title_slug) }
-
-            if (newProblems.isNotEmpty()) {
-                val newSlugs = newProblems.mapNotNull { it.stat.question__title_slug }
-                savedSlugs.addAll(newSlugs)
-                saveProblems(context, savedSlugs)
-            }
-
-            problems = matchProblemsWithArrays(fetchedProblems)
-            updateProblemsCache(context, problems)
-        } catch (e: Exception) {
-            errorMessage = "Failed to load problems: ${e.message}"
-            e.printStackTrace()
-        } finally {
-            isLoading = false
+            showRefreshButton = false
+            clearCache(context)
         }
-    }
 
-    // Fetch categories for all problems when problems are loaded
-    LaunchedEffect(problems) {
-        if (problems.isNotEmpty()) {
-            // Initialize loading state for all problems
-            val loadingMap = problems.associate { problem ->
-                problem.stat.question__title_slug!! to ProblemCategory(isLoading = true)
+        // Handle notification clicks
+        LaunchedEffect(notificationProblemSlug, problems) {
+            if (notificationProblemSlug != null && problems.isNotEmpty()) {
+                val problemToOpen = problems.find {
+                    it.stat.question__title_slug == notificationProblemSlug
+                }
+                if (problemToOpen != null) {
+                    selectedProblem = problemToOpen
+                    onNotificationHandled()
+                }
             }
-            categoryMap = loadingMap
+        }
 
-            // Fetch categories in parallel with limited concurrency
-            val semaphore = Semaphore(5) // Limit to 5 concurrent requests
+        // Main data loading effect
+        // Improved data loading effect with better error handling
+        LaunchedEffect(Unit) {
+            // Small delay to ensure app is fully initialized
+            delay(500)
 
-            coroutineScope {
-                problems.mapNotNull { problem ->
-                    problem.stat.question__title_slug?.let { slug ->
-                        async {
-                            semaphore.withPermit {
-                                val category = fetchProblemCategory(slug)
-                                categoryMap = categoryMap + (slug to category)
+            // First, try to load from cache
+            val cachedProblems = getCachedEnhancedProblems(context)
+            if (cachedProblems.isNotEmpty() && isCacheValid(context)) {
+                problems = cachedProblems
+                isUsingCachedData = true
+                showRefreshButton = true
+                Log.d("Cache", "Loaded ${cachedProblems.size} problems from cache")
+                updateProblemsCache(context, cachedProblems)
+
+                // Even with cached data, try to fetch fresh data in background
+                launch {
+                    try {
+                        val freshProblems = fetchLeetCodeProblemsWithRetry()
+                        if (freshProblems.isNotEmpty()) {
+                            val enhancedProblems = matchProblemsWithArrays(freshProblems)
+                            problems = enhancedProblems
+                            saveEnhancedProblemsToCache(context, enhancedProblems)
+                            updateProblemsCache(context, enhancedProblems)
+                            isUsingCachedData = false
+                            Log.d("Cache", "Background refresh successful")
+                        }
+                    } catch (e: Exception) {
+                        Log.d("Cache", "Background refresh failed, keeping cached data")
+                        // Keep using cached data if background refresh fails
+                    }
+                }
+            } else {
+                // No valid cache, fetch fresh data with retry logic
+                isLoading = true
+                try {
+                    val fetchedProblems = fetchLeetCodeProblemsWithRetry()
+                    val savedSlugs = getSavedProblems(context).toMutableSet()
+                    val newProblems = fetchedProblems.filterNot { savedSlugs.contains(it.stat.question__title_slug) }
+
+                    if (newProblems.isNotEmpty()) {
+                        val newSlugs = newProblems.mapNotNull { it.stat.question__title_slug }
+                        savedSlugs.addAll(newSlugs)
+                        saveProblems(context, savedSlugs)
+                    }
+
+                    val enhancedProblems = matchProblemsWithArrays(fetchedProblems)
+                    problems = enhancedProblems
+                    saveEnhancedProblemsToCache(context, enhancedProblems)
+                    updateProblemsCache(context, enhancedProblems)
+                    isUsingCachedData = false
+                    showRefreshButton = true
+                    errorMessage = null
+
+                } catch (e: Exception) {
+                    errorMessage = "Failed to load problems: ${e.message}"
+                    e.printStackTrace()
+
+                    // If fetch fails but we have ANY cached data, use it
+                    if (cachedProblems.isNotEmpty()) {
+                        problems = cachedProblems
+                        isUsingCachedData = true
+                        showRefreshButton = true
+                        errorMessage = "Using cached data (network error: ${e.message})"
+                        Log.d("Cache", "Fell back to cached data due to network error")
+                    } else {
+                        // No cache available, show proper error
+                        errorMessage = "No internet connection and no cached data available. Please check your connection and try again."
+                        showRefreshButton = true
+                    }
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+
+        // Effect for handling refresh
+        LaunchedEffect(isLoading) {
+            if (isLoading && !showRefreshButton) { // This indicates a refresh was triggered
+                try {
+                    val fetchedProblems = fetchLeetCodeProblems()
+                    val savedSlugs = getSavedProblems(context).toMutableSet()
+                    val newProblems = fetchedProblems.filterNot { savedSlugs.contains(it.stat.question__title_slug) }
+
+                    if (newProblems.isNotEmpty()) {
+                        val newSlugs = newProblems.mapNotNull { it.stat.question__title_slug }
+                        savedSlugs.addAll(newSlugs)
+                        saveProblems(context, savedSlugs)
+                    }
+
+                    val enhancedProblems = matchProblemsWithArrays(fetchedProblems)
+                    problems = enhancedProblems
+                    saveEnhancedProblemsToCache(context, enhancedProblems)
+                    updateProblemsCache(context, enhancedProblems)
+                    isUsingCachedData = false
+                    showRefreshButton = true
+                    errorMessage = null
+
+                } catch (e: Exception) {
+                    errorMessage = "Failed to refresh problems: ${e.message}"
+                    // Try to reload cached data if refresh fails
+                    val cachedProblems = getCachedEnhancedProblems(context)
+                    if (cachedProblems.isNotEmpty()) {
+                        problems = cachedProblems
+                        isUsingCachedData = true
+                        errorMessage = "Refresh failed. Using cached data: ${e.message}"
+                    }
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+
+        // Fetch categories for problems when they are loaded
+        LaunchedEffect(problems) {
+            if (problems.isNotEmpty()) {
+                val loadingMap = problems.associate { problem ->
+                    problem.stat.question__title_slug!! to ProblemCategory(isLoading = true)
+                }
+                categoryMap = loadingMap
+
+                val semaphore = Semaphore(5)
+                coroutineScope {
+                    problems.mapNotNull { problem ->
+                        problem.stat.question__title_slug?.let { slug ->
+                            async {
+                                semaphore.withPermit {
+                                    try {
+                                        val category = fetchProblemCategory(slug)
+                                        categoryMap = categoryMap + (slug to category)
+                                    } catch (e: Exception) {
+                                        categoryMap = categoryMap + (slug to ProblemCategory(error = e.message))
+                                    }
+                                }
                             }
                         }
-                    }
-                }.awaitAll()
+                    }.awaitAll()
+                }
             }
         }
-    }
 
-    checkedMap = getCheckedMap(context)
+        // Load checked map
+        LaunchedEffect(Unit) {
+            checkedMap = getCheckedMap(context)
+        }
 
-    // Show detail screen if a problem is selected
-    if (selectedProblem != null) {
-        ProblemDetailScreen(
-            slug = selectedProblem!!.stat.question__title_slug ?: "",
-            url = "https://leetcode.com/problems/${selectedProblem!!.stat.question__title_slug}/",
-            onBackClick = { selectedProblem = null }
-        )
-        return@Surface
-    }
+        // Show detail screen if a problem is selected
+        if (selectedProblem != null) {
+            ProblemDetailScreen(
+                slug = selectedProblem!!.stat.question__title_slug ?: "",
+                url = "https://leetcode.com/problems/${selectedProblem!!.stat.question__title_slug}/",
+                onBackClick = { selectedProblem = null }
+            )
+            return@Surface
+        }
 
-    // Show main screen
+        // Show main screen
         Column(modifier = Modifier.fillMaxSize()) {
             when {
                 isLoading -> {
@@ -1043,9 +1593,9 @@ fun LeetCodeScreen(
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Loading LeetCode problems...")
+                            Text("3700+ problems are loading plus getting organised according to the uploaded dsa sheets")
                             Text(
-                                text = "Matching with priority arrays...",
+                                text = "Please wait i beg...",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1053,214 +1603,269 @@ fun LeetCodeScreen(
                     }
                 }
 
-            errorMessage != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = errorMessage!!,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                        Text(
-                            text = "Check your internet connection and try again",
-                            style = MaterialTheme.typography.bodySmall,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.padding(16.dp)
-                        )
-                    }
-                }
-            }
-
-            problems.isEmpty() -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text("No problems found")
-                }
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp)
-                ) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                val matchedCount = problems.count { it.priority > 0 }
-                                Text(
-                                    text = "LeetCode Problems (${problems.size})",
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                                Text(
-                                    text = "Matched with arrays: $matchedCount",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.padding(bottom = 16.dp)
-                                )
+                errorMessage != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = errorMessage!!,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                            Text(
+                                text = "Check your internet connection and try again",
+                                style = MaterialTheme.typography.bodySmall,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                            if (showRefreshButton) {
+                                Button(
+                                    onClick = refreshData,
+                                    enabled = !isRefreshing,
+                                    modifier = Modifier.padding(end = 8.dp)
+                                ) {
+                                    if (isRefreshing) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(16.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        Text("Refresh")
+                                    }
+                                }
                             }
-
-                            // Notification button positioned to the right of the heading
-                            LeetCodeNotificationButton(problems)
                         }
                     }
-                    items(problems) { problem ->
-                        val slug = problem.stat.question__title_slug ?: ""
-                        val categoryInfo = categoryMap[slug] ?: ProblemCategory()
+                }
 
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 4.dp)
-                                .clickable {
-                                    selectedProblem = problem
-                                },
-                            shape = MaterialTheme.shapes.medium,
-                            elevation = CardDefaults.cardElevation(4.dp),
-                            colors = if (problem.priority > 0) {
-                                CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                                )
-                            } else {
-                                CardDefaults.cardColors()
+                problems.isEmpty() -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("No problems found")
+                            Button(
+                                onClick = refreshData,
+                                modifier = Modifier.padding(top = 16.dp)
+                            ) {
+                                Text("Load Problems")
                             }
-                        ) {
-                            Column(Modifier.padding(16.dp)) {
+                        }
+                    }
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp)
+                    ) {
+                        item {
+                            Column {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Checkbox(
-                                        checked = checkedMap[slug] == true,
-                                        onCheckedChange = { isChecked ->
-                                            val updated = checkedMap.toMutableMap()
-                                            updated[slug] = isChecked
-                                            checkedMap = updated
-                                            saveCheckedMap(context, updated)
-                                        }
-                                    )
-
                                     Column(modifier = Modifier.weight(1f)) {
+                                        val matchedCount = problems.count { it.priority > 0 }
                                         Text(
-                                            text = "${problem.stat.frontend_question_id}. ${problem.stat.question__title}",
-                                            style = MaterialTheme.typography.titleMedium
+                                            text = "LeetCode Problems (${problems.size})",
+                                            style = MaterialTheme.typography.headlineMedium,
+                                            modifier = Modifier.padding(bottom = 8.dp)
+                                        )
+                                        Text(
+                                            text = "Matched with arrays: $matchedCount",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(bottom = 8.dp)
                                         )
 
-                                        // Display category title
-                                        when {
-                                            categoryInfo.isLoading -> {
-                                                Text(
-                                                    text = "Loading category...",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            categoryInfo.error != null -> {
-                                                Text(
-                                                    text = "Category: Unable to load",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.error
-                                                )
-                                            }
-                                            categoryInfo.categoryTitle != "N/A" -> {
-                                                Text(
-                                                    text = "Category: ${categoryInfo.categoryTitle}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.secondary,
-                                                    modifier = Modifier.padding(vertical = 2.dp)
-                                                )
-                                            }
-                                        }
-
-                                        if (problem.priority > 0) {
+                                        if (isUsingCachedData) {
                                             Text(
-                                                text = "Priority ${problem.priority} • ${String.format("%.1f", problem.matchPercentage)}% match",
+                                                text = "Using cached data • Tap refresh for latest",
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary
+                                                color = MaterialTheme.colorScheme.secondary,
+                                                modifier = Modifier.padding(bottom = 8.dp)
+                                            )
+                                        } else {
+                                            Text(
+                                                text = "Live data",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color.Green,
+                                                modifier = Modifier.padding(bottom = 8.dp)
                                             )
                                         }
                                     }
 
                                     Row {
-                                        if (problem.priority > 0) {
-                                            Text(
-                                                text = "⭐",
-                                                style = MaterialTheme.typography.bodyLarge
-                                            )
+                                        if (showRefreshButton) {
+                                            Button(
+                                                onClick = refreshData,
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = MaterialTheme.colorScheme.onBackground
+                                                ),
+                                                modifier = Modifier.padding(end = 8.dp)
+                                            ) {
+                                                Text("Refresh")
+                                            }
                                         }
-                                        if (problem.paid_only) {
-                                            Text(
-                                                text = "🔒",
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Text(
-                                        text = "Difficulty: ${when (problem.difficulty.level) {
-                                            1 -> "Easy"
-                                            2 -> "Medium"
-                                            3 -> "Hard"
-                                            else -> "Unknown"
-                                        }}",
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = when (problem.difficulty.level) {
-                                            1 -> Color.Green
-                                            2 -> Color(0xFFFF9800)
-                                            3 -> Color.Red
-                                            else -> MaterialTheme.colorScheme.onSurface
-                                        }
-                                    )
-
-                                    Text(
-                                        text = "AC: ${problem.stat.total_acs}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    if (problem.paid_only) {
-                                        Text(
-                                            text = "Premium Only",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFFFFD700)
-                                        )
-                                    }
-
-                                    if (problem.stat.is_new_question) {
-                                        Text(
-                                            text = "New Problem",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = Color(0xFF4CAF50)
-                                        )
+                                        LeetCodeNotificationButton(problems)
                                     }
                                 }
                             }
                         }
-                    }}
+
+                        items(problems) { problem ->
+                            val slug = problem.stat.question__title_slug ?: ""
+                            val categoryInfo = categoryMap[slug] ?: ProblemCategory()
+
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 4.dp)
+                                    .clickable {
+                                        selectedProblem = problem
+                                    },
+                                shape = MaterialTheme.shapes.medium,
+                                elevation = CardDefaults.cardElevation(4.dp),
+                                colors = if (problem.priority > 0) {
+                                    CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    )
+                                } else {
+                                    CardDefaults.cardColors()
+                                }
+                            ) {
+                                Column(Modifier.padding(16.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = checkedMap[slug] == true,
+                                            onCheckedChange = { isChecked ->
+                                                val updated = checkedMap.toMutableMap()
+                                                updated[slug] = isChecked
+                                                checkedMap = updated
+                                                saveCheckedMap(context, updated)
+                                            }
+                                        )
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "${problem.stat.frontend_question_id}. ${problem.stat.question__title}",
+                                                style = MaterialTheme.typography.titleMedium
+                                            )
+
+                                            when {
+                                                categoryInfo.isLoading -> {
+                                                    Text(
+                                                        text = "Loading category...",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                categoryInfo.error != null -> {
+                                                    Text(
+                                                        text = "Category: Unable to load",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.error
+                                                    )
+                                                }
+                                                categoryInfo.categoryTitle != "N/A" -> {
+                                                    Text(
+                                                        text = "Category: ${categoryInfo.categoryTitle}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.secondary,
+                                                        modifier = Modifier.padding(vertical = 2.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            if (problem.priority > 0) {
+                                                Text(
+                                                    text = "Priority ${problem.priority} • ${String.format("%.1f", problem.matchPercentage)}% match",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+
+                                        Row {
+                                            if (problem.priority > 0) {
+                                                Text(
+                                                    text = "⭐",
+                                                    style = MaterialTheme.typography.bodyLarge
+                                                )
+                                            }
+                                            if (problem.paid_only) {
+                                                Text(
+                                                    text = "🔒",
+                                                    style = MaterialTheme.typography.bodyMedium
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Difficulty: ${when (problem.difficulty.level) {
+                                                1 -> "Easy"
+                                                2 -> "Medium"
+                                                3 -> "Hard"
+                                                else -> "Unknown"
+                                            }}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = when (problem.difficulty.level) {
+                                                1 -> Color.Green
+                                                2 -> Color(0xFFFF9800)
+                                                3 -> Color.Red
+                                                else -> MaterialTheme.colorScheme.onSurface
+                                            }
+                                        )
+
+                                        Text(
+                                            text = "AC: ${problem.stat.total_acs}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        if (problem.paid_only) {
+                                            Text(
+                                                text = "Premium Only",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFFFFD700)
+                                            )
+                                        }
+
+                                        if (problem.stat.is_new_question) {
+                                            Text(
+                                                text = "New Problem",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF4CAF50)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1301,7 +1906,7 @@ suspend fun fetchLeetCodeProblems(): List<ProblemStat> = withContext(Dispatchers
                 val leetCodeResponse = json.decodeFromString<LeetCodeResponse>(response)
                 Log.d("FetchProblems", "JSON parsed successfully. Found ${leetCodeResponse.stat_status_pairs.size} problems")
 
-                val filteredProblems = leetCodeResponse.stat_status_pairs.take(1000)
+                val filteredProblems = leetCodeResponse.stat_status_pairs.take(4000)
                 problems.addAll(filteredProblems)
                 Log.d("FetchProblems", "Added ${filteredProblems.size} problems after filtering")
 

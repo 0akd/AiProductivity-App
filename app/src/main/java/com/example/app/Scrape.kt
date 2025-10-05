@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -60,7 +61,17 @@ data class ScrapedContent(
 data class AwanMessage(val role: String, val content: String)
 
 @Composable
-fun ChatTriggerPopup(displayedContent: List<ScrapedContent>) {
+fun ChatTriggerPopup(
+    displayedContent: List<ScrapedContent>,
+    welcomeText: String = "i know all about current ongoing hackathons ask me and wait for minimum 1 minute",
+    chatPopupModifier: Modifier = Modifier,
+    fabContainerColor: Color = MaterialTheme.colorScheme.tertiary,
+    fabContentColor: Color = MaterialTheme.colorScheme.onBackground,
+    fabIcon: ImageVector = Icons.Default.QuestionMark,
+    fabIconDescription: String = "Open Chat",
+    showOverlay: Boolean = true,
+    overlayColor: Color = Color.Black.copy(alpha = 0.5f)
+) {
     var showChatPopup by remember { mutableStateOf(false) }
 
     // Extract titles from displayedContent
@@ -77,12 +88,12 @@ fun ChatTriggerPopup(displayedContent: List<ScrapedContent>) {
             onClick = { showChatPopup = true },
             modifier = Modifier
                 .padding(16.dp), // space from bottom and start
-            containerColor = MaterialTheme.colorScheme.tertiary,
-            contentColor = MaterialTheme.colorScheme.onBackground
+            containerColor = fabContainerColor,
+            contentColor = fabContentColor
         ) {
             Icon(
-                imageVector = Icons.Default.QuestionMark,
-                contentDescription = "Open Chat",
+                imageVector = fabIcon,
+                contentDescription = fabIconDescription,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -102,18 +113,19 @@ fun ChatTriggerPopup(displayedContent: List<ScrapedContent>) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)) // Optional overlay
+                    .background(if (showOverlay) overlayColor else Color.Transparent)
             ) {
                 ChatPopup(
                     isVisible = true,
                     onDismiss = { showChatPopup = false },
-                    extractedTitles = extractedTitles
+                    extractedTitles = extractedTitles,
+                    welcomeText = welcomeText,
+                    modifier = chatPopupModifier
                 )
             }
         }
     }
 }
-
 
 data class AwanChoice(val message: AwanMessage)
 
@@ -126,31 +138,105 @@ interface AwanApi {
     @Streaming
     fun chatStream(@Body request: AwanRequest): Call<ResponseBody>
 }
-
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ScraperScreen() {
+fun ScraperJobScreen() {
 
     var searchQuery by remember { mutableStateOf("") }
     val context = LocalContext.current
     val urlList = listOf(
-        "https://unstop.com/hackathons?page=1",
-        "https://devpost.com/hackathons?challenge_type[]=online&page=4&status[]=open",
-        "https://unstop.com/hackathons?page=2",
-        "https://devfolio.co/search?primary_filter=hackathons&type=application_open",
-        "https://unstop.com/hackathons?page=3",
-        "https://devpost.com/hackathons?challenge_type[]=online&status[]=upcoming",
-        "https://devpost.com/hackathons?challenge_type[]=in-person&page=2&status[]=open",
-        "https://devpost.com/hackathons?challenge_type[]=in-person&page=3&status[]=upcoming",
-        "https://www.hackerearth.com/challenges/hackathon/"
+        "https://m.timesjobs.com/mobile/jobs-search-result.html?cboWorkExp1=0",
+        "https://www.naukri.com/fresher-jobs-1",
+        "https://www.naukri.com/fresher-jobs-2",
+        "https://www.naukri.com/fresher-jobs-3",
+        "https://www.naukri.com/fresher-jobs-4",
+        "https://www.naukri.com/remote-jobs-1",
+        "https://www.naukri.com/remote-jobs-2",
+        "https://www.naukri.com/remote-jobs-3",
+        "https://www.naukri.com/remote-jobs-4",
+
+        "https://www.naukri.com/sales-jobs-1",
+        "https://www.naukri.com/sales-jobs-2",
+        "https://www.naukri.com/sales-jobs-3",
+        "https://www.naukri.com/sales-jobs-4",
+        "https://www.naukri.com/mnc-jobs-1",
+        "https://www.naukri.com/mnc-jobs-2",
+        "https://www.naukri.com/mnc-jobs-3",
+        "https://www.naukri.com/mnc-jobs-4",
+        "https://www.naukri.com/hr-jobs-1",
+        "https://www.naukri.com/hr-jobs-2",
+        "https://www.naukri.com/hr-jobs-3",
+        "https://www.naukri.com/hr-jobs-4",
+        "https://www.naukri.com/jobs-in-india-1",
+        "https://www.naukri.com/jobs-in-india-2",
+        "https://www.naukri.com/jobs-in-india-3",
+        "https://www.naukri.com/jobs-in-india-4",
+        "https://www.naukri.com/engineering-jobs-1",
+        "https://www.naukri.com/engineering-jobs-2",
+        "https://www.naukri.com/engineering-jobs-3",
+        "https://www.naukri.com/engineering-jobs-4",
+        "https://www.naukri.com/it-jobs-1",
+        "https://www.naukri.com/it-jobs-2",
+        "https://www.naukri.com/it-jobs-3",
+        "https://www.naukri.com/it-jobs-4",
+        "https://www.naukri.com/analytics-jobs-1",
+        "https://www.naukri.com/analytics-jobs-2",
+        "https://www.naukri.com/analytics-jobs-3",
+        "https://www.naukri.com/analytics-jobs-4",
+        "https://www.naukri.com/data-science-jobs-1",
+        "https://www.naukri.com/data-science-jobs-2",
+        "https://www.naukri.com/data-science-jobs-3",
+        "https://www.naukri.com/data-science-jobs-4",
+        "https://www.naukri.com/marketing-jobs-1",
+        "https://www.naukri.com/marketing-jobs-2",
+        "https://www.naukri.com/marketing-jobs-3",
+        "https://www.naukri.com/marketing-jobs-4"
     )
+
     val listState = rememberLazyListState()
     var allContent by remember { mutableStateOf<List<ScrapedContent>>(emptyList()) }
-    var currentIndex by remember { mutableStateOf(0) }
-    var isProcessing by remember { mutableStateOf(false) }
-    var webView: WebView? = remember { null }
-    var isCompleted by remember { mutableStateOf(false) }
+    var completedUrls by remember { mutableStateOf(0) }
+    var isScrapingComplete by remember { mutableStateOf(false) }
+    val webViews = remember { mutableStateMapOf<Int, WebView>() }
+    var showInitialLoader by remember { mutableStateOf(true) }
+    var restartTrigger by remember { mutableStateOf(0) }
+    var newHackathonsCount by remember { mutableStateOf(0) }
+
+    // Hide loader after 2 seconds
+    LaunchedEffect(Unit) {
+        delay(2000)
+        showInitialLoader = false
+    }
+
+    // AUTO-RESTART: Deep scraping only
+    LaunchedEffect(isScrapingComplete) {
+        if (isScrapingComplete) {
+            delay(300000) // Wait 5 minutes before next cycle
+
+            // Snapshot existing hackathons for comparison
+            val existingKeys = allContent.map { "${it.title}_${it.sourceUrl}" }.toSet()
+
+            // Reset for re-scraping
+            completedUrls = 0
+            isScrapingComplete = false
+
+            // Trigger WebView reload
+            restartTrigger++
+
+            // After deep scraping completes, filter and append only new items
+            delay(15000) // Wait for deep scrape to complete
+
+            // Get items added since restart
+            val newItems = allContent.filter { item ->
+                val key = "${item.title}_${item.sourceUrl}"
+                !existingKeys.contains(key)
+            }
+
+            if (newItems.isNotEmpty()) {
+                newHackathonsCount += newItems.size
+            }
+        }
+    }
 
     // Filter content based on search query
     val searchFilteredContent = remember(allContent, searchQuery) {
@@ -160,37 +246,16 @@ fun ScraperScreen() {
         } else {
             uniqueContent.filter { content ->
                 val searchLower = searchQuery.lowercase()
-                val titleMatches = content.title.lowercase().contains(searchLower)
-                val descMatches = content.description.lowercase().contains(searchLower)
-                val infoMatches = content.additionalInfo.lowercase().contains(searchLower)
-                titleMatches || descMatches || infoMatches
+                content.title.lowercase().contains(searchLower) ||
+                        content.description.lowercase().contains(searchLower) ||
+                        content.additionalInfo.lowercase().contains(searchLower)
             }
         }
     }
 
-    // Animation for loading progress
-    val infiniteTransition = rememberInfiniteTransition(label = "loading")
-    val loadingProgress by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "progress"
-    )
-
-    // Function to load next URL
-    fun loadNextUrl() {
-        if (currentIndex < urlList.size - 1) {
-            currentIndex++
-            webView?.postDelayed({
-                webView?.loadUrl(urlList[currentIndex])
-            }, 1500) // Reduced delay between URLs
-        } else {
-            isCompleted = true
-            isProcessing = false
-        }
+    // Track progress
+    val progress = remember(completedUrls) {
+        if (urlList.isEmpty()) 1f else completedUrls.toFloat() / urlList.size
     }
 
     Column(
@@ -207,379 +272,308 @@ fun ScraperScreen() {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
             shape = RoundedCornerShape(0.dp)
         ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Column {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(5.dp)) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("🔍 Search Hackathons, Organisers...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
 
-                // Loading Status or Search Bar
-                if (isCompleted) {
-                    // Search Bar
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(5.dp)) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("🔍 Search Hackathons , Organisers... ") },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             val totalCount = allContent.distinctBy { "${it.title}_${it.sourceUrl}" }.size
                             Text(
                                 text = if (searchQuery.isEmpty()) {
-                                    "Showing all $totalCount hackathons"
+                                    when {
+                                        !isScrapingComplete -> "Found $totalCount internships • Deep scraping... ⚡"
+                                        newHackathonsCount > 0 -> "Showing all $totalCount internshps • $newHackathonsCount new ✨"
+                                        else -> "Showing all $totalCount internships • Auto-refreshing..."
+                                    }
                                 } else {
-                                    "Found ${searchFilteredContent.size} hackathons matching \"$searchQuery\""
+                                    "Found ${searchFilteredContent.size} matching \"$searchQuery\""
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
                             )
-                        }
-                    }
-                } else {
-                    // Loading status
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        shape = RectangleShape,
-                        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
-                    ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(1.dp)
-                                    .clip(RectangleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxHeight()
-                                        .fillMaxWidth(loadingProgress)
-                                        .clip(RectangleShape)
-                                        .background(MaterialTheme.colorScheme.primary)
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                val currentSite = try {
-                                    val uri = Uri.parse(urlList[currentIndex])
-                                    uri.host?.replace("www.", "") ?: "Unknown"
-                                } catch (e: Exception) {
-                                    "Unknown"
-                                }
-                                Text(
-                                    text = "Currently scraping: $currentSite",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                                    textAlign = TextAlign.Center
-                                )
-                                Card {
+
+                            if (!isScrapingComplete) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                                    )
+                                ) {
                                     Text(
-                                        text = "${allContent.size}",
-                                        color = MaterialTheme.colorScheme.onBackground,
+                                        text = "${completedUrls}/${urlList.size}",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
                                     )
                                 }
                             }
                         }
                     }
                 }
+
+                if (!isScrapingComplete) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress)
+                                .background(MaterialTheme.colorScheme.tertiary)
+                        )
+                    }
+                }
             }
         }
 
-        // Hidden WebView for scraping
-        AndroidView(
-            factory = {
-                WebView(context).apply {
-                    webView = this
+        // DEEP WEBVIEWS ONLY
+        Box(modifier = Modifier.size(0.dp)) {
+            urlList.forEachIndexed { index, url ->
+                key("$index-$restartTrigger") {
+                    AndroidView(
+                        factory = {
+                            WebView(context).apply {
+                                webViews[index] = this
 
-                    settings.apply {
-                        javaScriptEnabled = true
-                        domStorageEnabled = true
-                        databaseEnabled = true
-                        cacheMode = WebSettings.LOAD_DEFAULT
-                        userAgentString =
-                            "Mozilla/5.0 (Linux; Android 10; SM-G975F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
-                    }
-                    val cookieManager = CookieManager.getInstance()
-                    cookieManager.setAcceptCookie(true)
-                    cookieManager.setAcceptThirdPartyCookies(this, true)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                        cookieManager.flush()
-                    }
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    databaseEnabled = false
+                                    cacheMode = WebSettings.LOAD_NO_CACHE // Always fresh data
+                                    blockNetworkImage = false // Load images for deep scraping
+                                    loadsImagesAutomatically = true
+                                    userAgentString =
+                                        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
+                                }
 
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
+                                webViewClient = object : WebViewClient() {
+                                    private var isProcessing = false
+                                    private var scrollCount = 0
+                                    private val maxScrolls = 10 // Deep scraping: 10 scrolls
 
-                            if (isProcessing) return
-                            isProcessing = true
+                                    override fun onPageFinished(view: WebView?, pageUrl: String?) {
+                                        super.onPageFinished(view, pageUrl)
 
-                            val maxScrolls = 8 // Reduced scroll count
-                            var scrollCount = 0
+                                        if (isProcessing) return
+                                        isProcessing = true
 
-                            fun scrapeCurrentView() {
-                                view?.evaluateJavascript(
-                                    """
-                                    (function() {
-                                        const headingSelectors = ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '[class*="title"]', '[class*="heading"]', '[class*="name"]'];
-                                        let contentItems = [];
-                                        
-                                        const blockedKeywords = [
-                                            'hackathons', 'filter', 'end', 'clubnapa', 'publicinvite', 'linkedin', 'devpost',
-                                            'insights', 'stories', 'recordings', 'documentation', 'filters', 'live challenges',
-                                            'upcoming challenges', 'previous challenges', 'knowledge', 'contact', 'notifications',
-                                            'log in', 'sign up', 'requirements', 'following', 'available', 'please'
-                                        ];
-                                        
-                                        function shouldFilter(title, description, additionalInfo) {
-                                            const combinedText = (title + ' ' + description + ' ' + additionalInfo).toLowerCase();
-                                            return blockedKeywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
-                                        }
-                                        
-                                        headingSelectors.forEach(selector => {
-                                            document.querySelectorAll(selector).forEach(heading => {
-                                                const title = heading.innerText.trim();
-                                                if (title.length > 2) {
-                                                    let description = '';
-                                                    let additionalInfo = '';
-                                                    
-                                                    let nextElement = heading.nextElementSibling;
-                                                    let attempts = 0;
-                                                    while (nextElement && attempts < 5) {
-                                                        if (nextElement.tagName === 'P') {
-                                                            description = nextElement.innerText.trim();
-                                                            
-                                                            let nextAfterP = nextElement.nextElementSibling;
-                                                            if (nextAfterP) {
-                                                                const nextText = nextAfterP.innerText.trim();
-                                                                if (nextText.match(/\d+/) || nextText.match(/\$/) || nextText.match(/₹/) || nextText.match(/\d{4}/) || nextText.length < 50) {
-                                                                    additionalInfo = nextText;
-                                                                }
+                                        // DEEP DELAY: Wait longer for JS to load completely
+                                        val initialDelay = 2000L
+                                        view?.postDelayed({
+                                            startScrollingScrape(view)
+                                        }, initialDelay)
+                                    }
+
+                                    private fun startScrollingScrape(view: WebView?) {
+                                        scrollAndScrape(view)
+                                    }
+
+                                    private fun scrapeCurrentView(view: WebView?) {
+                                        view?.evaluateJavascript(
+                                            """
+                                            (function() {
+                                                const selectors = ['h1', 'h2', 'h3', '[class*="title"]', '[class*="heading"]'];
+                                                let items = [];
+                                                const blockedKeywords = [
+                                                'connect with us','employer home','help center','privacy policy','company',
+                                                    'help', 'legal', 'fresher jobs', 'sales jobs', 'remote jobs', "mnc jobs",
+    "hr jobs",
+    "jobs in india",
+    "engineering jobs",
+    "it jobs",
+    "analytics jobs",
+    "data science jobs",
+    "marketing jobs", 'jobs found', 'loading',
+                                                    'we care for you', 'recruiters are', 'more job offers', 'sort by', 'filters', 'live challenges',
+                                                    'upcoming challenges', 'previous challenges', 'knowledge', 'contact', 'notifications',
+                                                    'log in', 'sign up', 'requirements', 'following', 'available', 'please'
+                                                ];
+                                                
+                                                function shouldFilter(title, description, additionalInfo) {
+                                                    const combinedText = (title + ' ' + description + ' ' + additionalInfo).toLowerCase();
+                                                    return blockedKeywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
+                                                }
+                                                
+                                                selectors.forEach(sel => {
+                                                    document.querySelectorAll(sel).forEach(h => {
+                                                        const title = h.innerText.trim();
+                                                        if (title.length < 3) return;
+                                                        
+                                                        let desc = '';
+                                                        let info = '';
+                                                        
+                                                        let next = h.nextElementSibling;
+                                                        for (let i = 0; i < 5 && next; i++) {
+                                                            const text = next.innerText?.trim() || '';
+                                                            if (text && text.length > 5 && text.length < 200 && !desc) {
+                                                                desc = text;
+                                                                break;
                                                             }
-                                                            break;
-                                                        } else if (nextElement.tagName && nextElement.innerText.trim().length > 5 && nextElement.innerText.trim().length < 200) {
-                                                            description = nextElement.innerText.trim();
-                                                            break;
+                                                            next = next.nextElementSibling;
                                                         }
-                                                        nextElement = nextElement.nextElementSibling;
-                                                        attempts++;
-                                                    }
-                                                    
-                                                    if (!description) {
-                                                        const parent = heading.parentElement;
-                                                        if (parent) {
-                                                            const paragraphs = parent.querySelectorAll('p');
-                                                            paragraphs.forEach(p => {
-                                                                const pText = p.innerText.trim();
-                                                                if (pText.length > 5 && pText.length < 300 && !description) {
-                                                                    description = pText;
-                                                                }
-                                                            });
-                                                            
-                                                            if (!description) {
-                                                                const spans = parent.querySelectorAll('span, div');
-                                                                spans.forEach(span => {
-                                                                    const spanText = span.innerText.trim();
-                                                                    if (spanText.length > 10 && spanText.length < 200 && !description && spanText !== title) {
-                                                                        description = spanText;
-                                                                    }
+                                                        
+                                                        const container = h.closest('[class*="card"], [class*="item"]');
+                                                        if (container) {
+                                                            const containerText = container.innerText;
+                                                            const match = containerText.match(/(\d+[^\w\s]*\s*(?:participants|days|₹|\$|prizes?))/i);
+                                                            if (match) info = match[1];
+                                                        }
+                                                        
+                                                        if (!shouldFilter(title, desc, info)) {
+                                                            const isDuplicate = items.some(item => item.title === title);
+                                                            if (!isDuplicate && title.length > 2) {
+                                                                items.push({
+                                                                    title: title,
+                                                                    description: desc || 'No description',
+                                                                    additionalInfo: info || ''
                                                                 });
                                                             }
                                                         }
-                                                    }
-                                                    
-                                                    if (!description) {
-                                                        const grandParent = heading.parentElement?.parentElement;
-                                                        if (grandParent) {
-                                                            const allParagraphs = grandParent.querySelectorAll('p');
-                                                            allParagraphs.forEach(p => {
-                                                                const pText = p.innerText.trim();
-                                                                if (pText.length > 5 && pText.length < 300 && !description && pText !== title) {
-                                                                    description = pText;
-                                                                }
-                                                            });
-                                                        }
-                                                    }
-                                                    
-                                                    let cardContainer = heading.closest('[class*="card"], [class*="item"], [class*="event"], [class*="hackathon"], [class*="competition"]');
-                                                    if (!description && cardContainer) {
-                                                        const cardParagraphs = cardContainer.querySelectorAll('p');
-                                                        cardParagraphs.forEach(p => {
-                                                            const pText = p.innerText.trim();
-                                                            if (pText.length > 5 && pText.length < 300 && !description && pText !== title) {
-                                                                description = pText;
-                                                            }
-                                                        });
-                                                    }
-                                                    
-                                                    if (!additionalInfo) {
-                                                        const containerText = cardContainer ? cardContainer.innerText : (heading.parentElement ? heading.parentElement.innerText : '');
-                                                        const patterns = [
-                                                            /(\d+[^\w\s]*\s*(?:participants|entries|days|hours|minutes|₹|\$|prizes?|winners?|deadline|teams?))/i,
-                                                            /(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/,
-                                                            /(₹\s*\d+[,\d]*|\$\s*\d+[,\d]*)/,
-                                                            /(\d+\s*(?:days?|hours?|minutes?)\s*(?:left|remaining))/i,
-                                                            /(deadline|due|ends?|closes?)\s*:?\s*([^\n]{1,50})/i
-                                                        ];
-                                                        
-                                                        for (let pattern of patterns) {
-                                                            const match = containerText.match(pattern);
-                                                            if (match) {
-                                                                additionalInfo = match[1] || match[0];
-                                                                break;
+                                                    });
+                                                });
+                                                
+                                                return JSON.stringify(items);
+                                            })();
+                                            """.trimIndent()
+                                        ) { result ->
+                                            try {
+                                                val clean = result.removeSurrounding("\"")
+                                                    .replace("\\\"", "\"")
+                                                    .replace("\\n", " ")
+                                                    .replace("\\r", "")
+                                                    .replace("\\t", " ")
+
+                                                if (clean.startsWith("[") && clean.endsWith("]")) {
+                                                    val jsonContent = clean.substring(1, clean.length - 1)
+                                                    val items = mutableListOf<ScrapedContent>()
+
+                                                    val objectPattern = """\{[^}]*\}""".toRegex()
+                                                    objectPattern.findAll(jsonContent).forEach { match ->
+                                                        val obj = match.value
+                                                        val titleMatch = """"title":"([^"]*)"""".toRegex().find(obj)
+                                                        val descMatch = """"description":"([^"]*)"""".toRegex().find(obj)
+                                                        val infoMatch = """"additionalInfo":"([^"]*)"""".toRegex().find(obj)
+
+                                                        if (titleMatch != null) {
+                                                            val newItem = ScrapedContent(
+                                                                title = titleMatch.groupValues[1],
+                                                                description = descMatch?.groupValues?.get(1) ?: "",
+                                                                additionalInfo = infoMatch?.groupValues?.get(1) ?: "",
+                                                                sourceUrl = url
+                                                            )
+
+                                                            if (!allContent.any { it.title == newItem.title && it.sourceUrl == newItem.sourceUrl }) {
+                                                                items.add(newItem)
                                                             }
                                                         }
                                                     }
-                                                    
-                                                    if (!shouldFilter(title, description, additionalInfo)) {
-                                                        const isDuplicate = contentItems.some(item => item.title === title);
-                                                        if (!isDuplicate && title.length > 2) {
-                                                            contentItems.push({
-                                                                title: title,
-                                                                description: description || 'No description available',
-                                                                additionalInfo: additionalInfo || ''
-                                                            });
-                                                        }
+
+                                                    if (items.isNotEmpty()) {
+                                                        allContent = allContent + items
                                                     }
                                                 }
-                                            });
-                                        });
-                                        
-                                        return JSON.stringify(contentItems);
-                                    })();
-                                    """.trimIndent()
-                                ) { result ->
-                                    try {
-                                        val clean = result.removeSurrounding("\"")
-                                            .replace("\\\"", "\"")
-                                            .replace("\\n", " ")
-                                            .replace("\\r", "")
-                                            .replace("\\t", " ")
-
-                                        if (clean.startsWith("[") && clean.endsWith("]")) {
-                                            val jsonContent = clean.substring(1, clean.length - 1)
-                                            val items = mutableListOf<ScrapedContent>()
-
-                                            val objectPattern = """\{[^}]*\}""".toRegex()
-                                            val matches = objectPattern.findAll(jsonContent)
-
-                                            for (match in matches) {
-                                                val obj = match.value
-                                                val titleMatch = """"title":"([^"]*)"""".toRegex().find(obj)
-                                                val descMatch = """"description":"([^"]*)"""".toRegex().find(obj)
-                                                val infoMatch = """"additionalInfo":"([^"]*)"""".toRegex().find(obj)
-
-                                                if (titleMatch != null) {
-                                                    val newItem = ScrapedContent(
-                                                        title = titleMatch.groupValues[1],
-                                                        description = descMatch?.groupValues?.get(1) ?: "",
-                                                        additionalInfo = infoMatch?.groupValues?.get(1) ?: "",
-                                                        sourceUrl = urlList.getOrNull(currentIndex) ?: ""
-                                                    )
-
-                                                    // Check if this item already exists
-                                                    if (!allContent.any { it.title == newItem.title && it.sourceUrl == newItem.sourceUrl }) {
-                                                        items.add(newItem)
-                                                    }
-                                                }
-                                            }
-
-                                            // Add new items immediately to allContent
-                                            if (items.isNotEmpty()) {
-                                                allContent = allContent + items
+                                            } catch (e: Exception) {
+                                                // Silent fail
                                             }
                                         }
-                                    } catch (e: Exception) {
-                                        // Handle errors silently
+                                    }
+
+                                    private fun scrollAndScrape(view: WebView?) {
+                                        if (scrollCount >= maxScrolls) {
+                                            completedUrls++
+                                            if (completedUrls >= urlList.size) {
+                                                isScrapingComplete = true
+                                            }
+                                            return
+                                        }
+
+                                        scrapeCurrentView(view)
+
+                                        // DEEP DELAY: Longer wait between scrolls for complete loading
+                                        val scrollDelay = 1500L
+
+                                        view?.evaluateJavascript(
+                                            "(function(){ window.scrollTo(0, document.body.scrollHeight); })();"
+                                        ) { _ ->
+                                            scrollCount++
+                                            view?.postDelayed({ scrollAndScrape(view) }, scrollDelay)
+                                        }
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        errorCode: Int,
+                                        description: String?,
+                                        failingUrl: String?
+                                    ) {
+                                        completedUrls++
+                                        if (completedUrls >= urlList.size) {
+                                            isScrapingComplete = true
+                                        }
                                     }
                                 }
+
+                                // START LOADING
+                                loadUrl(url)
                             }
-
-                            fun scrollAndScrape() {
-                                if (scrollCount >= maxScrolls) {
-                                    isProcessing = false
-                                    loadNextUrl()
-                                    return
-                                }
-
-                                // Scrape current view first
-                                scrapeCurrentView()
-
-                                // Then scroll
-                                view?.evaluateJavascript(
-                                    """
-                                    (function(){
-                                        const height = document.body.scrollHeight;
-                                        window.scrollTo(0, height);
-                                        return height;
-                                    })();
-                                    """.trimIndent()
-                                ) { _ ->
-                                    scrollCount++
-                                    // Reduced delay between scrolls
-                                    view?.postDelayed({
-                                        scrollAndScrape()
-                                    }, 1000) // 1 second instead of 2
-                                }
-                            }
-
-                            // Start scrolling + scraping loop
-                            scrollAndScrape()
-                        }
-
-                        override fun onReceivedError(
-                            view: WebView?,
-                            errorCode: Int,
-                            description: String?,
-                            failingUrl: String?
-                        ) {
-                            isProcessing = false
-                            loadNextUrl()
-                        }
-                    }
-
-                    loadUrl(urlList[0])
+                        },
+                        modifier = Modifier.size(0.dp),
+                        update = { }
+                    )
                 }
-            },
-            modifier = Modifier.size(0.dp),
-            update = { }
-        )
+            }
+        }
 
         // Results Section
-        if (allContent.isEmpty() && !isCompleted) {
-            Popup(
-                alignment = Alignment.Center,
-                properties = PopupProperties(focusable = false, dismissOnClickOutside = false)
+        if (allContent.isEmpty() && showInitialLoader) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.7f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator(
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = "Discovering hackathons...",
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = Color.White
-                        )
-                    }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "⚡ Deep scraping ${urlList.size} sites...",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
                 }
+            }
+        } else if (allContent.isEmpty() && !showInitialLoader) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "No hackathons found yet. Still searching...",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
+                )
             }
         } else {
             LazyColumn(
@@ -609,104 +603,81 @@ fun ScraperScreen() {
                                 Text(
                                     text = "Try adjusting your search terms",
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    textAlign = TextAlign.Center
+                                    color = MaterialTheme.colorScheme.onErrorContainer
                                 )
                             }
                         }
                     }
                 } else {
-                    itemsIndexed(searchFilteredContent) { index, content ->
-                        val visible = remember { mutableStateOf(false) }
-
-                        LaunchedEffect(Unit) {
-                            delay(index * 50L)
-                            visible.value = true
+                    items(searchFilteredContent.size) { index ->
+                        val content = searchFilteredContent[index]
+                        val siteName = try {
+                            Uri.parse(content.sourceUrl).host?.replace("www.", "") ?: ""
+                        } catch (e: Exception) {
+                            ""
                         }
 
-                        AnimatedVisibility(
-                            visible = visible.value,
-                            enter = fadeIn(animationSpec = tween(600)) + slideInVertically(
-                                animationSpec = tween(600),
-                                initialOffsetY = { it / 2 }
-                            )
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val query = "${content.title} ${content.description} $siteName"
+                                    val encoded = URLEncoder.encode(query, "UTF-8")
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://www.google.com/search?q=$encoded")
+                                    )
+                                    context.startActivity(intent)
+                                },
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         ) {
-                            val siteName = try {
-                                val uri = Uri.parse(content.sourceUrl)
-                                uri.host?.replace("www.", "") ?: ""
-                            } catch (e: Exception) {
-                                ""
-                            }
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = content.title,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
 
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        val searchQuery = "${content.title} $siteName"
-                                        val encodedQuery = URLEncoder.encode(searchQuery, "UTF-8")
-                                        val intent = Intent(
-                                            Intent.ACTION_VIEW,
-                                            Uri.parse("https://www.google.com/search?q=$encodedQuery")
+                                if (siteName.isNotEmpty()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                        ),
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = siteName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                                         )
-                                        context.startActivity(intent)
-                                    },
-                                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-                            ) {
-                                Column(modifier = Modifier.padding(16.dp)) {
+                                    }
+                                }
+
+                                if (content.description.isNotEmpty()) {
                                     Text(
-                                        text = content.title,
-                                        style = MaterialTheme.typography.headlineSmall,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        fontWeight = FontWeight.Bold,
+                                        text = content.description,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.padding(bottom = 8.dp)
                                     )
+                                }
 
-                                    if (siteName.isNotEmpty()) {
-                                        Card(
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.secondaryContainer
-                                            ),
-                                            modifier = Modifier.padding(bottom = 8.dp)
-                                        ) {
-                                            Text(
-                                                text = " $siteName",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                modifier = Modifier.padding(
-                                                    horizontal = 8.dp,
-                                                    vertical = 4.dp
-                                                )
-                                            )
-                                        }
-                                    }
-
-                                    if (content.description.isNotEmpty()) {
-                                        Text(
-                                            text = content.description,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(bottom = 8.dp)
+                                if (content.additionalInfo.isNotEmpty()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
                                         )
-                                    }
-
-                                    if (content.additionalInfo.isNotEmpty()) {
-                                        Card(
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.tertiaryContainer
-                                            )
-                                        ) {
-                                            Text(
-                                                text = content.additionalInfo,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                fontWeight = FontWeight.Medium,
-                                                modifier = Modifier.padding(
-                                                    horizontal = 8.dp,
-                                                    vertical = 4.dp
-                                                )
-                                            )
-                                        }
+                                    ) {
+                                        Text(
+                                            text = content.additionalInfo,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
                                     }
                                 }
                             }
@@ -716,13 +687,540 @@ fun ScraperScreen() {
             }
         }
     }
-    ChatTriggerPopup(allContent)
+    ChatTriggerPopup(allContent, welcomeText = "ask me about internship or job or tell me your skill i wil find the best suiting one ")
+}
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ScraperScreen() {
+
+    var searchQuery by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val urlList = listOf(
+
+        "https://unstop.com/hackathons?page=1",
+        "https://devpost.com/hackathons?challenge_type[]=online&page=4&status[]=open",
+        "https://unstop.com/hackathons?page=2",
+        "https://devfolio.co/search?primary_filter=hackathons&type=application_open",
+        "https://unstop.com/hackathons?page=3",
+        "https://devpost.com/hackathons?challenge_type[]=online&status[]=upcoming",
+        "https://devpost.com/hackathons?challenge_type[]=in-person&page=2&status[]=open",
+        "https://devpost.com/hackathons?challenge_type[]=in-person&page=3&status[]=upcoming",
+        "https://www.hackerearth.com/challenges/hackathon/"
+    )
+    val listState = rememberLazyListState()
+    var allContent by remember { mutableStateOf<List<ScrapedContent>>(emptyList()) }
+    var completedUrls by remember { mutableStateOf(0) }
+    var isScrapingComplete by remember { mutableStateOf(false) }
+    val webViews = remember { mutableStateMapOf<Int, WebView>() }
+    var showInitialLoader by remember { mutableStateOf(true) }
+    var restartTrigger by remember { mutableStateOf(0) }
+    var newHackathonsCount by remember { mutableStateOf(0) }
+    var isFirstScrape by remember { mutableStateOf(true) }
+
+    // Hide loader after 2 seconds
+    LaunchedEffect(Unit) {
+        delay(2000)
+        showInitialLoader = false
+    }
+
+    // AUTO-RESTART: Fast first scrape, then deep subsequent scrapes
+    LaunchedEffect(isScrapingComplete) {
+        if (isScrapingComplete) {
+            delay(0) // Wait 5 minutes before next cycle
+
+            // Snapshot existing hackathons for comparison
+            val existingKeys = allContent.map { "${it.title}_${it.sourceUrl}" }.toSet()
+
+            // Reset for re-scraping
+            completedUrls = 0
+            isScrapingComplete = false
+            isFirstScrape = false // Switch to deep scraping mode
+
+            // Trigger WebView reload
+            restartTrigger++
+
+            // After deep scraping completes, filter and append only new items
+            delay(0)
+
+            // Get items added since restart
+            val newItems = allContent.filter { item ->
+                val key = "${item.title}_${item.sourceUrl}"
+                !existingKeys.contains(key)
+            }
+
+            if (newItems.isNotEmpty()) {
+                newHackathonsCount += newItems.size
+            }
+        }
+    }
+
+    // Filter content based on search query
+    val searchFilteredContent = remember(allContent, searchQuery) {
+        val uniqueContent = allContent.distinctBy { "${it.title}_${it.sourceUrl}" }
+        if (searchQuery.isEmpty()) {
+            uniqueContent
+        } else {
+            uniqueContent.filter { content ->
+                val searchLower = searchQuery.lowercase()
+                content.title.lowercase().contains(searchLower) ||
+                        content.description.lowercase().contains(searchLower) ||
+                        content.additionalInfo.lowercase().contains(searchLower)
+            }
+        }
+    }
+
+    // Track progress
+    val progress = remember(completedUrls) {
+        if (urlList.isEmpty()) 1f else completedUrls.toFloat() / urlList.size
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .zIndex(1f)
+    ) {
+
+        // Heading Card
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .zIndex(3f),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+            shape = RoundedCornerShape(0.dp)
+        ) {
+            Column {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                ) {
+                    Column(modifier = Modifier.padding(5.dp)) {
+                        OutlinedTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            placeholder = { Text("🔍 Search Hackathons, Organisers...") },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val totalCount = allContent.distinctBy { "${it.title}_${it.sourceUrl}" }.size
+                            Text(
+                                text = if (searchQuery.isEmpty()) {
+                                    when {
+                                        !isScrapingComplete && isFirstScrape -> "Found $totalCount hackathons • Quick scraping..."
+                                        !isScrapingComplete && !isFirstScrape -> "Found $totalCount hackathons • Deep scraping... ⚡"
+                                        newHackathonsCount > 0 -> "Showing all $totalCount hackathons • $newHackathonsCount new ✨"
+                                        else -> "Showing all $totalCount hackathons • Auto-refreshing..."
+                                    }
+                                } else {
+                                    "Found ${searchFilteredContent.size} matching \"$searchQuery\""
+                                },
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f)
+                            )
+
+                            if (!isScrapingComplete) {
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (isFirstScrape)
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.tertiaryContainer
+                                    )
+                                ) {
+                                    Text(
+                                        text = "${completedUrls}/${urlList.size}",
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = if (isFirstScrape)
+                                            MaterialTheme.colorScheme.onPrimaryContainer
+                                        else
+                                            MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (!isScrapingComplete) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(2.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progress)
+                                .background(
+                                    if (isFirstScrape)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.tertiary
+                                )
+                        )
+                    }
+                }
+            }
+        }
+
+        // ADAPTIVE WEBVIEWS: Fast first scrape, deep subsequent scrapes
+        Box(modifier = Modifier.size(0.dp)) {
+            urlList.forEachIndexed { index, url ->
+                key("$index-$restartTrigger") {
+                    AndroidView(
+                        factory = {
+                            WebView(context).apply {
+                                webViews[index] = this
+
+                                settings.apply {
+                                    javaScriptEnabled = true
+                                    domStorageEnabled = true
+                                    databaseEnabled = false
+                                    cacheMode = if (isFirstScrape) {
+                                        WebSettings.LOAD_CACHE_ELSE_NETWORK // Fast initial load
+                                    } else {
+                                        WebSettings.LOAD_NO_CACHE // Fresh data on deep scrape
+                                    }
+                                    blockNetworkImage = !isFirstScrape // Load images on deep scrape
+                                    loadsImagesAutomatically = !isFirstScrape
+                                    userAgentString =
+                                        "Mozilla/5.0 (Linux; Android 10) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
+                                }
+
+                                webViewClient = object : WebViewClient() {
+                                    private var isProcessing = false
+                                    private var scrollCount = 0
+                                    // ADAPTIVE: 3 scrolls for fast scrape, 10 for deep scrape
+                                    private val maxScrolls = if (isFirstScrape) 3 else 10
+
+                                    override fun onPageFinished(view: WebView?, pageUrl: String?) {
+                                        super.onPageFinished(view, pageUrl)
+
+                                        if (isProcessing) return
+                                        isProcessing = true
+
+                                        // ADAPTIVE DELAY: Wait longer on deep scrape for JS to load
+                                        val initialDelay = if (isFirstScrape) 500L else 2000L
+                                        view?.postDelayed({
+                                            startScrollingScrape(view)
+                                        }, initialDelay)
+                                    }
+
+                                    private fun startScrollingScrape(view: WebView?) {
+                                        scrollAndScrape(view)
+                                    }
+
+                                    private fun scrapeCurrentView(view: WebView?) {
+                                        view?.evaluateJavascript(
+                                            """
+                                            (function() {
+                                                const selectors = ['h1', 'h2', 'h3', '[class*="title"]', '[class*="heading"]'];
+                                                let items = [];
+                                                const blockedKeywords = [
+                                                'searching...','back','peers','within','and promote',
+                                                    'hackathons', 'filter', 'end', 'clubnapa', 'publicinvite', 'linkedin', 'devpost',
+                                                    'insights', 'stories', 'recordings', 'documentation', 'filters', 'live challenges',
+                                                    'upcoming challenges', 'previous challenges', 'knowledge', 'contact', 'notifications',
+                                                    'log in', 'sign up', 'requirements', 'following', 'available', 'please'
+                                                ];
+                                                
+                                                function shouldFilter(title, description, additionalInfo) {
+                                                    const combinedText = (title + ' ' + description + ' ' + additionalInfo).toLowerCase();
+                                                    return blockedKeywords.some(keyword => combinedText.includes(keyword.toLowerCase()));
+                                                }
+                                                
+                                                selectors.forEach(sel => {
+                                                    document.querySelectorAll(sel).forEach(h => {
+                                                        const title = h.innerText.trim();
+                                                        if (title.length < 3) return;
+                                                        
+                                                        let desc = '';
+                                                        let info = '';
+                                                        
+                                                        let next = h.nextElementSibling;
+                                                        for (let i = 0; i < 5 && next; i++) {
+                                                            const text = next.innerText?.trim() || '';
+                                                            if (text && text.length > 5 && text.length < 200 && !desc) {
+                                                                desc = text;
+                                                                break;
+                                                            }
+                                                            next = next.nextElementSibling;
+                                                        }
+                                                        
+                                                        const container = h.closest('[class*="card"], [class*="item"]');
+                                                        if (container) {
+                                                            const containerText = container.innerText;
+                                                            const match = containerText.match(/(\d+[^\w\s]*\s*(?:participants|days|₹|\$|prizes?))/i);
+                                                            if (match) info = match[1];
+                                                        }
+                                                        
+                                                        if (!shouldFilter(title, desc, info)) {
+                                                            const isDuplicate = items.some(item => item.title === title);
+                                                            if (!isDuplicate && title.length > 2) {
+                                                                items.push({
+                                                                    title: title,
+                                                                    description: desc || 'No description',
+                                                                    additionalInfo: info || ''
+                                                                });
+                                                            }
+                                                        }
+                                                    });
+                                                });
+                                                
+                                                return JSON.stringify(items);
+                                            })();
+                                            """.trimIndent()
+                                        ) { result ->
+                                            try {
+                                                val clean = result.removeSurrounding("\"")
+                                                    .replace("\\\"", "\"")
+                                                    .replace("\\n", " ")
+                                                    .replace("\\r", "")
+                                                    .replace("\\t", " ")
+
+                                                if (clean.startsWith("[") && clean.endsWith("]")) {
+                                                    val jsonContent = clean.substring(1, clean.length - 1)
+                                                    val items = mutableListOf<ScrapedContent>()
+
+                                                    val objectPattern = """\{[^}]*\}""".toRegex()
+                                                    objectPattern.findAll(jsonContent).forEach { match ->
+                                                        val obj = match.value
+                                                        val titleMatch = """"title":"([^"]*)"""".toRegex().find(obj)
+                                                        val descMatch = """"description":"([^"]*)"""".toRegex().find(obj)
+                                                        val infoMatch = """"additionalInfo":"([^"]*)"""".toRegex().find(obj)
+
+                                                        if (titleMatch != null) {
+                                                            val newItem = ScrapedContent(
+                                                                title = titleMatch.groupValues[1],
+                                                                description = descMatch?.groupValues?.get(1) ?: "",
+                                                                additionalInfo = infoMatch?.groupValues?.get(1) ?: "",
+                                                                sourceUrl = url
+                                                            )
+
+                                                            if (!allContent.any { it.title == newItem.title && it.sourceUrl == newItem.sourceUrl }) {
+                                                                items.add(newItem)
+                                                            }
+                                                        }
+                                                    }
+
+                                                    if (items.isNotEmpty()) {
+                                                        allContent = allContent + items
+                                                    }
+                                                }
+                                            } catch (e: Exception) {
+                                                // Silent fail
+                                            }
+                                        }
+                                    }
+
+                                    private fun scrollAndScrape(view: WebView?) {
+                                        if (scrollCount >= maxScrolls) {
+                                            completedUrls++
+                                            if (completedUrls >= urlList.size) {
+                                                isScrapingComplete = true
+                                            }
+                                            return
+                                        }
+
+                                        scrapeCurrentView(view)
+
+                                        // ADAPTIVE DELAY: Longer wait between scrolls on deep scrape
+                                        val scrollDelay = if (isFirstScrape) 400L else 1500L
+
+                                        view?.evaluateJavascript(
+                                            "(function(){ window.scrollTo(0, document.body.scrollHeight); })();"
+                                        ) { _ ->
+                                            scrollCount++
+                                            view?.postDelayed({ scrollAndScrape(view) }, scrollDelay)
+                                        }
+                                    }
+
+                                    override fun onReceivedError(
+                                        view: WebView?,
+                                        errorCode: Int,
+                                        description: String?,
+                                        failingUrl: String?
+                                    ) {
+                                        completedUrls++
+                                        if (completedUrls >= urlList.size) {
+                                            isScrapingComplete = true
+                                        }
+                                    }
+                                }
+
+                                // START LOADING
+                                loadUrl(url)
+                            }
+                        },
+                        modifier = Modifier.size(0.dp),
+                        update = { }
+                    )
+                }
+            }
+        }
+
+        // Results Section
+        if (allContent.isEmpty() && showInitialLoader) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(40.dp),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = "⚡ Parallel scraping ${urlList.size} sites...",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+        } else if (allContent.isEmpty() && !showInitialLoader) {
+            LoadingScreen(
+                messages = listOf(
+                    "Please wait...",
+                    "Loading your data...",
+                    "Almost there...",
+                    "Just a moment...",
+                    "maybe you have slow internet",
+                    "uffffff",
+                    "just right there ",
+                    "i beg dont go",
+                )
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                state = listState
+            ) {
+                if (searchFilteredContent.isEmpty() && searchQuery.isNotEmpty()) {
+                    item {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Text(
+                                    text = "🔍 No Results Found",
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Try adjusting your search terms",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    items(searchFilteredContent.size) { index ->
+                        val content = searchFilteredContent[index]
+                        val siteName = try {
+                            Uri.parse(content.sourceUrl).host?.replace("www.", "") ?: ""
+                        } catch (e: Exception) {
+                            ""
+                        }
+
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    val query = "${content.title} ${content.description} $siteName"
+                                    val encoded = URLEncoder.encode(query, "UTF-8")
+                                    val intent = Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse("https://www.google.com/search?q=$encoded")
+                                    )
+                                    context.startActivity(intent)
+                                },
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text(
+                                    text = content.title,
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+
+                                if (siteName.isNotEmpty()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                        ),
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    ) {
+                                        Text(
+                                            text = siteName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+
+                                if (content.description.isNotEmpty()) {
+                                    Text(
+                                        text = content.description,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+
+                                if (content.additionalInfo.isNotEmpty()) {
+                                    Card(
+                                        colors = CardDefaults.cardColors(
+                                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                                        )
+                                    ) {
+                                        Text(
+                                            text = content.additionalInfo,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                            fontWeight = FontWeight.Medium,
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    ChatTriggerPopup(allContent, welcomeText = "ask me about hackathons or tell me your skill i wil find the best suiting one and wait for 1 min i take some time to analyse and think :) ")
 }
 @Composable
 fun ChatPopup(
     isVisible: Boolean,
     onDismiss: () -> Unit,
     extractedTitles: List<String>,
+    welcomeText: String = "i know all about current ongoing hackathons ask me and wait for minimum 1 minute", // Default parameter
     modifier: Modifier = Modifier
 ) {
     var userInput by remember { mutableStateOf("") }
@@ -733,19 +1231,19 @@ fun ChatPopup(
     var hasShownWelcome by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
     val api = remember { getAwanApi() }
+
     fun streamWelcomeMessage(
         onStreamStart: () -> Unit,
         onStreamChunk: (String) -> Unit,
         onStreamComplete: (String) -> Unit
     ) {
-        val welcomeText = "Hello there how can i help you? ( Note - I know in detail about all the hackathons and dsa questions listed in the app )"
-
+        // Now using the parameter instead of hardcoded text
         onStreamStart()
 
         Thread {
             try {
                 welcomeText.forEach { char ->
-                    Thread.sleep(50) // Slightly slower for welcome message
+                    Thread.sleep(10) // Slightly slower for welcome message
                     onStreamChunk(char.toString())
                 }
                 onStreamComplete(welcomeText)
@@ -754,6 +1252,7 @@ fun ChatPopup(
             }
         }.start()
     }
+
     // Show welcome message when popup first opens
     LaunchedEffect(isVisible) {
         if (isVisible && !hasShownWelcome && chatMessages.isEmpty()) {
@@ -768,13 +1267,14 @@ fun ChatPopup(
                 },
                 onStreamComplete = { finalMessage ->
                     isStreaming = false
-                    chatMessages = listOf(AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language", finalMessage))
+                    chatMessages = listOf(AwanMessage("Helpful Assitant that gives answer in as much detail as possible with points examples and with easy to understand language pretends to know each and every detail of hackathons", finalMessage))
                     streamingMessage = ""
                 }
             )
         }
     }
 
+    // Rest of your component remains the same...
     if (isVisible) {
         Popup(
             alignment = Alignment.Center,
@@ -802,8 +1302,8 @@ fun ChatPopup(
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.background)
                             .padding(16.dp),
-                    horizontalArrangement = Arrangement.End,
-    verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
 
                         IconButton(
@@ -1112,7 +1612,7 @@ fun InputArea(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(
-                text = "📋 ${extractedTitles.size} hackathons scraped",
+                text = "📋currently i know about  ${extractedTitles.size} items",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(bottom = 8.dp)

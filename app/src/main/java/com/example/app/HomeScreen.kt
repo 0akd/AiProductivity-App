@@ -43,17 +43,7 @@ fun HomeScreen() {
                 color = MaterialTheme.colorScheme.onBackground // 🔁 use themed text color
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
 
-            // Paragraph 2
-            Text(
-                text = "In todo app, If your turn on notifications it will repeat randomly "
-                        + "this helps your to always keep getting reminded of what you have to do",
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                textAlign = TextAlign.Justify,
-                color = MaterialTheme.colorScheme.onBackground
-            )
 
             Spacer(modifier = Modifier.height(12.dp))
 

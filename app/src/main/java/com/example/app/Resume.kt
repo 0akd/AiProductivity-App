@@ -53,7 +53,213 @@ import kotlinx.coroutines.tasks.await
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.CircularProgressIndicator
 
+import android.content.SharedPreferences
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
+import com.google.gson.reflect.TypeToken
 
+class SharedPreferencesManager(private val sharedPreferences: SharedPreferences) {
+    private val gson = Gson()
+
+    // Profile management
+    fun saveProfile(profile: ProfileInfo): Result<String> {
+        return try {
+            val profiles = getProfiles().toMutableList()
+            // Remove if exists (update case)
+            profiles.removeAll { it.id == profile.id }
+            profiles.add(profile)
+
+            val profilesJson = gson.toJson(profiles)
+            sharedPreferences.edit().putString("profiles", profilesJson).apply()
+            Result.success("Profile saved locally")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun getProfiles(): List<ProfileInfo> {
+        val profilesJson = sharedPreferences.getString("profiles", "[]") ?: "[]"
+        return try {
+            val type = object : TypeToken<List<ProfileInfo>>() {}.type
+            gson.fromJson(profilesJson, type) ?: emptyList()
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    fun deleteProfile(profileId: String): Result<String> {
+        return try {
+            val profiles = getProfiles().toMutableList()
+            profiles.removeAll { it.id == profileId }
+
+            val profilesJson = gson.toJson(profiles)
+            sharedPreferences.edit().putString("profiles", profilesJson).apply()
+            Result.success("Profile deleted locally")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Resume data management
+    fun saveResumeData(profileId: String, resumeData: ResumeData): Result<String> {
+        return try {
+            val resumeDataJson = gson.toJson(convertToSerializableResumeData(resumeData))
+            sharedPreferences.edit().putString("resume_$profileId", resumeDataJson).apply()
+            Result.success("Resume saved locally")
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    fun loadResumeData(profileId: String): Result<ResumeData?> {
+        return try {
+            val resumeDataJson = sharedPreferences.getString("resume_$profileId", null)
+            if (resumeDataJson == null) {
+                Result.success(null)
+            } else {
+                val serializableData = gson.fromJson(resumeDataJson, SerializableResumeData::class.java)
+                Result.success(convertFromSerializableResumeData(serializableData))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    // Helper data classes for serialization
+    private data class SerializableResumeData(
+        val personal: Map<String, String> = mapOf(),
+        val education: List<Map<String, String>> = listOf(),
+        val experience: List<Map<String, Any>> = listOf(),
+        val projects: List<Map<String, Any>> = listOf(),
+        val skills: Map<String, List<String>> = mapOf()
+    )
+
+    // In SharedPreferencesManager, update the conversion methods
+    private fun convertToSerializableResumeData(resumeData: ResumeData): SerializableResumeData {
+        return SerializableResumeData(
+            personal = mapOf(
+                "name" to resumeData.personal.name,
+                "title" to resumeData.personal.title,
+                "email" to resumeData.personal.email,
+                "phone" to resumeData.personal.phone,
+                "location" to resumeData.personal.location,
+                "linkedin" to resumeData.personal.linkedin,
+                "github" to resumeData.personal.github,
+                "website" to resumeData.personal.website
+            ),
+            education = resumeData.education.map { edu ->
+                mapOf(
+                    "institution" to edu.institution,
+                    "degree" to edu.degree,
+                    "location" to edu.location,
+                    "startDate" to edu.startDate,
+                    "endDate" to edu.endDate
+                )
+            },
+            experience = resumeData.experience.map { exp ->
+                mapOf(
+                    "title" to exp.title,
+                    "company" to exp.company,
+                    "location" to exp.location,
+                    "startDate" to exp.startDate,
+                    "endDate" to exp.endDate,
+                    "responsibilities" to exp.responsibilities.toList()
+                )
+            },
+            projects = resumeData.projects.map { proj ->
+                mapOf(
+                    "name" to proj.name,
+                    "technologies" to proj.technologies,
+                    "startDate" to proj.startDate,
+                    "endDate" to proj.endDate,
+                    "description" to proj.description.toList(),
+                    "link" to proj.link
+                )
+            },
+            skills = mapOf(
+                "languages" to resumeData.skills.languages.toList(),
+                "frameworks" to resumeData.skills.frameworks.toList(),
+                "tools" to resumeData.skills.tools.toList(),
+                "libraries" to resumeData.skills.libraries.toList()
+            )
+        )
+    }
+
+    private fun convertFromSerializableResumeData(serializableData: SerializableResumeData): ResumeData {
+        val resumeData = ResumeData()
+
+        // Personal info
+        resumeData.personal.name = serializableData.personal["name"] ?: ""
+        resumeData.personal.title = serializableData.personal["title"] ?: ""
+        resumeData.personal.email = serializableData.personal["email"] ?: ""
+        resumeData.personal.phone = serializableData.personal["phone"] ?: ""
+        resumeData.personal.location = serializableData.personal["location"] ?: ""
+        resumeData.personal.linkedin = serializableData.personal["linkedin"] ?: ""
+        resumeData.personal.github = serializableData.personal["github"] ?: ""
+        resumeData.personal.website = serializableData.personal["website"] ?: ""
+
+        // Education
+        serializableData.education.forEach { eduMap ->
+            resumeData.education.add(Education().apply {
+                institution = eduMap["institution"] ?: ""
+                degree = eduMap["degree"] ?: ""
+                location = eduMap["location"] ?: ""
+                startDate = eduMap["startDate"] ?: ""
+                endDate = eduMap["endDate"] ?: ""
+            })
+        }
+
+        // Experience
+        serializableData.experience.forEach { expMap ->
+            resumeData.experience.add(Experience().apply {
+                title = expMap["title"] as? String ?: ""
+                company = expMap["company"] as? String ?: ""
+                location = expMap["location"] as? String ?: ""
+                startDate = expMap["startDate"] as? String ?: ""
+                endDate = expMap["endDate"] as? String ?: ""
+                responsibilities.clear()
+                (expMap["responsibilities"] as? List<*>)?.forEach { resp ->
+                    responsibilities.add(resp as? String ?: "")
+                }
+            })
+        }
+
+        // Projects
+        serializableData.projects.forEach { projMap ->
+            resumeData.projects.add(Project().apply {
+                name = projMap["name"] as? String ?: ""
+                technologies = projMap["technologies"] as? String ?: ""
+                startDate = projMap["startDate"] as? String ?: ""
+                endDate = projMap["endDate"] as? String ?: ""
+                link = projMap["link"] as? String ?: ""
+                description.clear()
+                (projMap["description"] as? List<*>)?.forEach { desc ->
+                    description.add(desc as? String ?: "")
+                }
+            })
+        }
+
+        // Skills
+        (serializableData.skills["languages"] ?: emptyList()).forEach { skill ->
+            resumeData.skills.languages.add(skill)
+        }
+        (serializableData.skills["frameworks"] ?: emptyList()).forEach { skill ->
+            resumeData.skills.frameworks.add(skill)
+        }
+        (serializableData.skills["tools"] ?: emptyList()).forEach { skill ->
+            resumeData.skills.tools.add(skill)
+        }
+        (serializableData.skills["libraries"] ?: emptyList()).forEach { skill ->
+            resumeData.skills.libraries.add(skill)
+        }
+
+        return resumeData
+    }
+
+}
 // Data classes for resume structure
 class PersonalInfo {
     var name by mutableStateOf("")
@@ -107,13 +313,81 @@ class Skills {
     var libraries = mutableStateListOf<String>()
 }
 
-data class ResumeData(
-    var personal: PersonalInfo = PersonalInfo(),
-    var education: SnapshotStateList<Education> = mutableStateListOf(),
-    var experience: SnapshotStateList<Experience> = mutableStateListOf(),
-    var projects: SnapshotStateList<Project> = mutableStateListOf(),
-    var skills: Skills = Skills()
-)
+// Replace your ResumeData class with this implementation
+@Stable
+class ResumeData {
+    val personal = PersonalInfo()
+    val education = mutableStateListOf<Education>()
+    val experience = mutableStateListOf<Experience>()
+    val projects = mutableStateListOf<Project>()
+    val skills = Skills()
+
+    // Helper method to create a deep copy
+    fun copyFrom(other: ResumeData) {
+        // Copy personal info
+        personal.name = other.personal.name
+        personal.title = other.personal.title
+        personal.email = other.personal.email
+        personal.phone = other.personal.phone
+        personal.location = other.personal.location
+        personal.linkedin = other.personal.linkedin
+        personal.github = other.personal.github
+        personal.website = other.personal.website
+
+        // Copy education
+        education.clear()
+        education.addAll(other.education.map { edu ->
+            Education().apply {
+                institution = edu.institution
+                degree = edu.degree
+                location = edu.location
+                startDate = edu.startDate
+                endDate = edu.endDate
+            }
+        })
+
+        // Copy experience
+        experience.clear()
+        experience.addAll(other.experience.map { exp ->
+            Experience().apply {
+                title = exp.title
+                company = exp.company
+                location = exp.location
+                startDate = exp.startDate
+                endDate = exp.endDate
+                responsibilities.clear()
+                responsibilities.addAll(exp.responsibilities)
+            }
+        })
+
+        // Copy projects
+        projects.clear()
+        projects.addAll(other.projects.map { proj ->
+            Project().apply {
+                name = proj.name
+                technologies = proj.technologies
+                startDate = proj.startDate
+                endDate = proj.endDate
+                link = proj.link
+                description.clear()
+                description.addAll(proj.description)
+            }
+        })
+
+        // Copy skills
+        skills.languages.clear()
+        skills.languages.addAll(other.skills.languages)
+
+        skills.frameworks.clear()
+        skills.frameworks.addAll(other.skills.frameworks)
+
+        skills.tools.clear()
+        skills.tools.addAll(other.skills.tools)
+
+        skills.libraries.clear()
+        skills.libraries.addAll(other.skills.libraries)
+    }
+}
 
 enum class ResumeTab(val title: String, val icon: ImageVector) {
     PERSONAL("Personal", Icons.Default.Person),
@@ -148,19 +422,18 @@ enum class ProfileDialogState {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ResumeBuilderApp() {
-    val resumeData = remember { mutableStateOf(ResumeData()) }
+    // Change this from mutableStateOf(ResumeData()) to just remember { ResumeData() }
+    val resumeData = remember { ResumeData() }
     val selectedTab = remember { mutableStateOf(ResumeTab.PERSONAL) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val repository = remember { ResumeRepository() }
+    val repository = remember { ResumeRepository(context) }
 
     // Profile management states
     var profiles by remember { mutableStateOf<List<ProfileInfo>>(emptyList()) }
     var selectedProfile by remember { mutableStateOf<ProfileInfo?>(null) }
     var showProfileDialog by remember { mutableStateOf(ProfileDialogState.NONE) }
     var showProfileDropdown by remember { mutableStateOf(false) }
-
-    var saveStatus by remember { mutableStateOf<String?>(null) }
     var isLoading by remember { mutableStateOf(false) }
 
     // Load profiles on app start
@@ -179,7 +452,10 @@ fun ResumeBuilderApp() {
                     // Load resume data for selected profile
                     repository.loadResumeData(selectedProfile!!.id).fold(
                         onSuccess = { loadedData ->
-                            loadedData?.let { resumeData.value = it }
+                            loadedData?.let {
+                                // Use copyFrom to update the existing resumeData
+                                resumeData.copyFrom(it)
+                            }
                             println("Resume data loaded for profile: ${selectedProfile?.name}")
                         },
                         onFailure = { error ->
@@ -199,111 +475,181 @@ fun ResumeBuilderApp() {
         )
     }
 
+    // Save data when profile changes
+    LaunchedEffect(selectedProfile) {
+        selectedProfile?.let { profile ->
+            isLoading = true
+            repository.loadResumeData(profile.id).fold(
+                onSuccess = { loadedData ->
+                    loadedData?.let {
+                        resumeData.copyFrom(it)
+                    }
+                    isLoading = false
+                },
+                onFailure = {
+                    // Reset to empty resume data if loading fails
+                    resumeData.copyFrom(ResumeData())
+                    isLoading = false
+                }
+            )
+        }
+    }
+
     Column(
         modifier = Modifier.fillMaxSize()
     ) {
         // Top App Bar with Profile selector and actions
-        TopAppBar(
-            title = {
+// Compact Top Bar with Profile selector and actions
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(48.dp),
+            color = MaterialTheme.colorScheme.primaryContainer,
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Title section
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { showProfileDropdown = true }
+                    modifier = Modifier
+                        .clickable { showProfileDropdown = true }
+                        .padding(horizontal = 8.dp)
                 ) {
                     Text(
                         text = selectedProfile?.name ?: "No Profile",
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
                     )
                     Icon(
                         imageVector = Icons.Default.ArrowDropDown,
                         contentDescription = "Select Profile",
-                        modifier = Modifier.padding(start = 4.dp)
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .size(20.dp)
                     )
                 }
-            },
-            actions = {
-                // Profile management button
-                IconButton(
-                    onClick = { showProfileDialog = ProfileDialogState.CREATE }
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add Profile")
-                }
 
-                // Refresh profiles button (for debugging)
-                IconButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            isLoading = true
-                            repository.loadProfiles().fold(
-                                onSuccess = { loadedProfiles ->
-                                    profiles = loadedProfiles
-                                    Toast.makeText(context, "Loaded ${loadedProfiles.size} profiles", Toast.LENGTH_SHORT).show()
-                                    isLoading = false
-                                },
-                                onFailure = { error ->
-                                    Toast.makeText(context, "Refresh failed: ${error.message}", Toast.LENGTH_SHORT).show()
-                                    isLoading = false
-                                }
+                // Actions section
+                Row(
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Profile management button
+                    IconButton(
+                        onClick = { showProfileDialog = ProfileDialogState.CREATE },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = "Add Profile",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Refresh profiles button (for debugging)
+                    IconButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                isLoading = true
+                                repository.loadProfiles().fold(
+                                    onSuccess = { loadedProfiles ->
+                                        profiles = loadedProfiles
+                                        Toast.makeText(context, "Loaded ${loadedProfiles.size} profiles", Toast.LENGTH_SHORT).show()
+                                        isLoading = false
+                                    },
+                                    onFailure = { error ->
+                                        Toast.makeText(context, "Refresh failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                        isLoading = false
+                                    }
+                                )
+                            }
+                        },
+                        modifier = Modifier.size(40.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Refresh,
+                            contentDescription = "Refresh Profiles",
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // Edit profile button
+                    selectedProfile?.let {
+                        IconButton(
+                            onClick = { showProfileDialog = ProfileDialogState.EDIT },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription = "Edit Profile",
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Profiles")
-                }
 
-                // Edit profile button
-                selectedProfile?.let {
-                    IconButton(
-                        onClick = { showProfileDialog = ProfileDialogState.EDIT }
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "Edit Profile")
-                    }
-                }
-
-                // Delete profile button
-                if (profiles.size > 1) {
-                    selectedProfile?.let {
-                        IconButton(
-                            onClick = { showProfileDialog = ProfileDialogState.DELETE }
-                        ) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete Profile")
-                        }
-                    }
-                }
-
-                // Save button
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    selectedProfile?.let { profile ->
-                        IconButton(
-                            onClick = {
-                                coroutineScope.launch {
-                                    isLoading = true
-                                    repository.saveResumeData(profile.id, resumeData.value).fold(
-                                        onSuccess = { message ->
-                                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                            isLoading = false
-                                        },
-                                        onFailure = { error ->
-                                            Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
-                                            isLoading = false
-                                        }
-                                    )
-                                }
+                    // Delete profile button
+                    if (profiles.size > 1) {
+                        selectedProfile?.let {
+                            IconButton(
+                                onClick = { showProfileDialog = ProfileDialogState.DELETE },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Delete,
+                                    contentDescription = "Delete Profile",
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
+                        }
+                    }
+
+                    // Save button
+                    if (isLoading) {
+                        Box(
+                            modifier = Modifier.size(40.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(Icons.Default.Save, contentDescription = "Save Resume")
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    } else {
+                        selectedProfile?.let { profile ->
+                            IconButton(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        isLoading = true
+                                        repository.saveResumeData(profile.id, resumeData).fold(
+                                            onSuccess = { message ->
+                                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                                isLoading = false
+                                            },
+                                            onFailure = { error ->
+                                                Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
+                                                isLoading = false
+                                            }
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.size(40.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Save,
+                                    contentDescription = "Save Resume",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
                 }
-            },
-            colors = TopAppBarDefaults.topAppBarColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
-            )
-        )
+            }
+        }
 
         // Profile dropdown menu
         DropdownMenu(
@@ -333,11 +679,14 @@ fun ResumeBuilderApp() {
                             isLoading = true
                             repository.loadResumeData(profile.id).fold(
                                 onSuccess = { loadedData ->
-                                    resumeData.value = loadedData ?: ResumeData()
+                                    loadedData?.let {
+                                        resumeData.copyFrom(it)
+                                    }
                                     isLoading = false
                                 },
                                 onFailure = {
-                                    resumeData.value = ResumeData()
+                                    // Reset to empty resume data if loading fails
+                                    resumeData.copyFrom(ResumeData())
                                     isLoading = false
                                 }
                             )
@@ -361,26 +710,36 @@ fun ResumeBuilderApp() {
                 )
             }
         }
-
-        // Content
+// Content
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                .padding(16.dp)
+
+                .background(MaterialTheme.colorScheme.background) // Add this line
         ) {
             if (selectedProfile != null) {
                 when (selectedTab.value) {
-                    ResumeTab.PERSONAL -> PersonalInfoTab(resumeData.value.personal)
-                    ResumeTab.EDUCATION -> EducationTab(resumeData.value.education)
-                    ResumeTab.EXPERIENCE -> ExperienceTab(resumeData.value.experience)
-                    ResumeTab.PROJECTS -> ProjectsTab(resumeData.value.projects)
-                    ResumeTab.SKILLS -> SkillsTab(resumeData.value.skills)
+                    ResumeTab.PERSONAL -> PersonalInfoTab(resumeData.personal)
+                    ResumeTab.EDUCATION -> EducationTab(resumeData.education)
+                    ResumeTab.EXPERIENCE -> ExperienceTab(resumeData.experience)
+                    ResumeTab.PROJECTS -> ProjectsTab(resumeData.projects)
+                    ResumeTab.SKILLS -> SkillsTab(resumeData.skills)
+                }
+                selectedProfile?.let {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize() // Changed from padding only
+                            .padding(WindowInsets.navigationBars.asPaddingValues()),
+                        contentAlignment = Alignment.BottomEnd // Changed from TopCenter
+                    ) {
+                        DownloadResumeScreen(context, resumeData)
+                    }
                 }
             } else {
                 // Show message when no profile is selected
                 Column(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize() .background(MaterialTheme.colorScheme.background),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
@@ -455,10 +814,10 @@ fun ResumeBuilderApp() {
             }
         }
 
-        selectedProfile?.let {
-            DownloadResumeScreen(context, resumeData.value)
-        }
+
     }
+
+
 
     // Profile dialogs
     when (showProfileDialog) {
@@ -476,7 +835,8 @@ fun ResumeBuilderApp() {
                             onSuccess = {
                                 profiles = profiles + newProfile
                                 selectedProfile = newProfile
-                                resumeData.value = ResumeData()
+                                // Use copyFrom instead of assignment
+                                resumeData.copyFrom(ResumeData())
                                 Toast.makeText(context, "Profile created successfully!", Toast.LENGTH_SHORT).show()
                             },
                             onFailure = { error ->
@@ -525,14 +885,21 @@ fun ResumeBuilderApp() {
                                     if (selectedProfile != null) {
                                         repository.loadResumeData(selectedProfile!!.id).fold(
                                             onSuccess = { loadedData ->
-                                                resumeData.value = loadedData ?: ResumeData()
+                                                // Use copyFrom instead of assignment
+                                                loadedData?.let {
+                                                    resumeData.copyFrom(it)
+                                                } ?: run {
+                                                    resumeData.copyFrom(ResumeData())
+                                                }
                                             },
                                             onFailure = {
-                                                resumeData.value = ResumeData()
+                                                // Reset to empty resume data if loading fails
+                                                resumeData.copyFrom(ResumeData())
                                             }
                                         )
                                     } else {
-                                        resumeData.value = ResumeData()
+                                        // Reset to empty resume data if no profile selected
+                                        resumeData.copyFrom(ResumeData())
                                     }
                                     Toast.makeText(context, "Profile deleted successfully!", Toast.LENGTH_SHORT).show()
                                 },
@@ -685,71 +1052,91 @@ fun ProfileDeleteDialog(
 }
 
 // Updated Repository class with profile management
-class ResumeRepository {
+class ResumeRepository(private val context: Context) {
     private val firestore = Firebase.firestore
     private val auth = FirebaseAuth.getInstance()
+    private val sharedPrefsManager = SharedPreferencesManager(
+        context.getSharedPreferences("resume_builder", Context.MODE_PRIVATE)
+    )
 
     fun getCurrentUserEmail(): String? {
-        val currentUser = auth.currentUser
-        val email = currentUser?.email
-        println("Current user: $currentUser, Email: $email")
-        return email
+        return auth.currentUser?.email
+    }
+
+    fun isUserLoggedIn(): Boolean {
+        return auth.currentUser != null
     }
 
     // Profile management methods
     suspend fun loadProfiles(): Result<List<ProfileInfo>> {
         return try {
-            val userEmail = getCurrentUserEmail()
-            println("Loading profiles for user: $userEmail")
+            if (isUserLoggedIn()) {
+                // Load from Firestore if logged in
+                val userEmail = getCurrentUserEmail()
+                    ?: return Result.failure(Exception("User not logged in"))
 
-            if (userEmail == null) {
-                println("User not logged in")
-                return Result.failure(Exception("User not logged in"))
-            }
+                val querySnapshot = firestore.collection("user_profiles")
+                    .whereEqualTo("userEmail", userEmail)
+                    .get()
+                    .await()
 
-            val querySnapshot = firestore.collection("user_profiles")
-                .whereEqualTo("userEmail", userEmail)
-                .get()
-                .await()
-
-            println("Found ${querySnapshot.documents.size} profile documents")
-
-            val profiles = querySnapshot.documents.mapNotNull { document ->
-                try {
-                    println("Processing document: ${document.id}")
+                val profiles = querySnapshot.documents.mapNotNull { document ->
                     val data = document.data
-                    println("Document data: $data")
-
                     if (data != null) {
-                        val profile = ProfileInfo(
+                        ProfileInfo(
                             id = document.id,
                             name = data["name"] as? String ?: "",
                             description = data["description"] as? String ?: "",
                             createdAt = data["createdAt"] as? Long ?: System.currentTimeMillis(),
                             lastModified = data["lastModified"] as? Long ?: System.currentTimeMillis()
                         )
-                        println("Created profile: ${profile.name}")
-                        profile
-                    } else {
-                        println("Document data is null")
-                        null
-                    }
-                } catch (e: Exception) {
-                    println("Error processing document ${document.id}: ${e.message}")
-                    null
+                    } else null
                 }
-            }
 
-            println("Successfully loaded ${profiles.size} profiles")
-            Result.success(profiles)
+                // Also sync local profiles to Firestore
+                val localProfiles = sharedPrefsManager.getProfiles()
+                localProfiles.forEach { localProfile ->
+                    // Upload local profiles to Firestore
+                    saveProfileToFirestore(localProfile)
+                }
+
+                Result.success(profiles)
+            } else {
+                // Load from SharedPreferences if not logged in
+                val localProfiles = sharedPrefsManager.getProfiles()
+                Result.success(localProfiles)
+            }
         } catch (e: Exception) {
-            println("Error loading profiles: ${e.message}")
-            e.printStackTrace()
-            Result.failure(e)
+            // Fallback to local storage if Firestore fails
+            val localProfiles = sharedPrefsManager.getProfiles()
+            Result.success(localProfiles)
         }
     }
 
     suspend fun saveProfile(profile: ProfileInfo): Result<String> {
+        return try {
+            // Always save locally first
+            val localResult = sharedPrefsManager.saveProfile(profile)
+
+            // Save to Firestore if logged in
+            if (isUserLoggedIn()) {
+                saveProfileToFirestore(profile).fold(
+                    onSuccess = {
+                        Result.success("Profile saved to cloud and locally")
+                    },
+                    onFailure = { error ->
+                        Result.success("Profile saved locally only: ${error.message}")
+                    }
+                )
+            } else {
+                localResult
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun saveProfileToFirestore(profile: ProfileInfo): Result<String> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
@@ -767,7 +1154,7 @@ class ResumeRepository {
                 .set(profileData)
                 .await()
 
-            Result.success("Profile created successfully!")
+            Result.success("Profile saved to Firestore")
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -775,13 +1162,35 @@ class ResumeRepository {
 
     suspend fun updateProfile(profile: ProfileInfo): Result<String> {
         return try {
+            // Always update locally first
+            val localResult = sharedPrefsManager.saveProfile(profile)
+
+            // Update Firestore if logged in
+            if (isUserLoggedIn()) {
+                updateProfileInFirestore(profile).fold(
+                    onSuccess = {
+                        Result.success("Profile updated in cloud and locally")
+                    },
+                    onFailure = { error ->
+                        Result.success("Profile updated locally only: ${error.message}")
+                    }
+                )
+            } else {
+                localResult
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun updateProfileInFirestore(profile: ProfileInfo): Result<String> {
+        return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
 
             val profileData = mapOf(
                 "name" to profile.name,
                 "description" to profile.description,
-                "createdAt" to profile.createdAt,
                 "lastModified" to System.currentTimeMillis(),
                 "userEmail" to userEmail
             )
@@ -791,13 +1200,36 @@ class ResumeRepository {
                 .update(profileData)
                 .await()
 
-            Result.success("Profile updated successfully!")
+            Result.success("Profile updated in Firestore")
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     suspend fun deleteProfile(profileId: String): Result<String> {
+        return try {
+            // Always delete locally first
+            val localResult = sharedPrefsManager.deleteProfile(profileId)
+
+            // Delete from Firestore if logged in
+            if (isUserLoggedIn()) {
+                deleteProfileFromFirestore(profileId).fold(
+                    onSuccess = {
+                        Result.success("Profile deleted from cloud and locally")
+                    },
+                    onFailure = { error ->
+                        Result.success("Profile deleted locally only: ${error.message}")
+                    }
+                )
+            } else {
+                localResult
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun deleteProfileFromFirestore(profileId: String): Result<String> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
@@ -814,14 +1246,37 @@ class ResumeRepository {
                 .delete()
                 .await()
 
-            Result.success("Profile deleted successfully!")
+            Result.success("Profile deleted from Firestore")
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    // Updated resume data methods to work with profiles
+    // Resume data methods
     suspend fun saveResumeData(profileId: String, resumeData: ResumeData): Result<String> {
+        return try {
+            // Always save locally first
+            val localResult = sharedPrefsManager.saveResumeData(profileId, resumeData)
+
+            // Save to Firestore if logged in
+            if (isUserLoggedIn()) {
+                saveResumeDataToFirestore(profileId, resumeData).fold(
+                    onSuccess = {
+                        Result.success("Resume saved to cloud and locally")
+                    },
+                    onFailure = { error ->
+                        Result.success("Resume saved locally only: ${error.message}")
+                    }
+                )
+            } else {
+                localResult
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun saveResumeDataToFirestore(profileId: String, resumeData: ResumeData): Result<String> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
@@ -875,7 +1330,6 @@ class ResumeRepository {
                 userEmail = userEmail
             )
 
-            // Use a compound key: userEmail_profileId
             val documentId = "${userEmail}_${profileId}"
 
             firestore.collection("resumes")
@@ -889,13 +1343,43 @@ class ResumeRepository {
                 .update("lastModified", System.currentTimeMillis())
                 .await()
 
-            Result.success("Resume saved successfully!")
+            Result.success("Resume saved to Firestore")
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
     suspend fun loadResumeData(profileId: String): Result<ResumeData?> {
+        return try {
+            // Try to load from Firestore first if logged in
+            if (isUserLoggedIn()) {
+                loadResumeDataFromFirestore(profileId).fold(
+                    onSuccess = { firestoreData ->
+                        if (firestoreData != null) {
+                            // Also save locally for offline access
+                            sharedPrefsManager.saveResumeData(profileId, firestoreData)
+                            Result.success(firestoreData)
+                        } else {
+                            // Fallback to local storage
+                            sharedPrefsManager.loadResumeData(profileId)
+                        }
+                    },
+                    onFailure = {
+                        // Fallback to local storage
+                        sharedPrefsManager.loadResumeData(profileId)
+                    }
+                )
+            } else {
+                // Load from local storage only
+                sharedPrefsManager.loadResumeData(profileId)
+            }
+        } catch (e: Exception) {
+            // Final fallback to local storage
+            sharedPrefsManager.loadResumeData(profileId)
+        }
+    }
+
+    private suspend fun loadResumeDataFromFirestore(profileId: String): Result<ResumeData?> {
         return try {
             val userEmail = getCurrentUserEmail()
                 ?: return Result.failure(Exception("User not logged in"))
@@ -995,32 +1479,36 @@ class ResumeRepository {
         }
     }
 
-    // Utility method to duplicate a profile (useful for creating variations)
-    suspend fun duplicateProfile(originalProfileId: String, newName: String, newDescription: String): Result<String> {
+    // Sync local data to cloud when user logs in
+    suspend fun syncLocalDataToCloud(): Result<String> {
         return try {
-            val userEmail = getCurrentUserEmail()
-                ?: return Result.failure(Exception("User not logged in"))
-
-            // Load existing resume data
-            val existingData = loadResumeData(originalProfileId).getOrNull()
-
-            // Create new profile
-            val newProfileId = "${System.currentTimeMillis()}_${newName.replace(" ", "_")}"
-            val newProfile = ProfileInfo(
-                id = newProfileId,
-                name = newName,
-                description = newDescription
-            )
-
-            // Save new profile
-            saveProfile(newProfile).getOrThrow()
-
-            // Save resume data for new profile if it exists
-            existingData?.let {
-                saveResumeData(newProfileId, it).getOrThrow()
+            if (!isUserLoggedIn()) {
+                return Result.failure(Exception("User not logged in"))
             }
 
-            Result.success("Profile duplicated successfully!")
+            val localProfiles = sharedPrefsManager.getProfiles()
+            var syncedCount = 0
+
+            localProfiles.forEach { profile ->
+                // Upload profile to Firestore
+                saveProfileToFirestore(profile).fold(
+                    onSuccess = {
+                        // Upload resume data for this profile
+                        sharedPrefsManager.loadResumeData(profile.id).fold(
+                            onSuccess = { resumeData ->
+                                resumeData?.let {
+                                    saveResumeDataToFirestore(profile.id, it)
+                                    syncedCount++
+                                }
+                            },
+                            onFailure = { /* Ignore resume data sync failure */ }
+                        )
+                    },
+                    onFailure = { /* Ignore profile sync failure */ }
+                )
+            }
+
+            Result.success("Synced $syncedCount profiles to cloud")
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -1033,13 +1521,16 @@ fun PersonalInfoTab(personalInfo: PersonalInfo) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState()),
+            .background(MaterialTheme.colorScheme.background)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
             text = "Personal Information",
             style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onBackground
         )
 
         OutlinedTextField(
@@ -1101,7 +1592,6 @@ fun PersonalInfoTab(personalInfo: PersonalInfo) {
         )
     }
 }
-
 @Composable
 fun EducationTab(educationList: SnapshotStateList<Education>) {
     Column(
@@ -1168,74 +1658,6 @@ fun EducationTab(educationList: SnapshotStateList<Education>) {
         }
     }
 }
-
-@Composable
-fun EducationItem(education: Education, onDelete: () -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Education Entry",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
-                }
-            }
-
-            OutlinedTextField(
-                value = education.institution,
-                onValueChange = { education.institution = it },
-                label = { Text("Institution") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = education.degree,
-                onValueChange = { education.degree = it },
-                label = { Text("Degree") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = education.location,
-                onValueChange = { education.location = it },
-                label = { Text("Location") },
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = education.startDate,
-                    onValueChange = { education.startDate = it },
-                    label = { Text("Start Date") },
-                    modifier = Modifier.weight(1f)
-                )
-
-                OutlinedTextField(
-                    value = education.endDate,
-                    onValueChange = { education.endDate = it },
-                    label = { Text("End Date") },
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
-
 @Composable
 fun ExperienceTab(experienceList: SnapshotStateList<Experience>) {
     Column(
@@ -1319,6 +1741,74 @@ fun ExperienceTab(experienceList: SnapshotStateList<Experience>) {
         }
     }
 }
+@Composable
+fun EducationItem(education: Education, onDelete: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = "Education Entry",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                IconButton(onClick = onDelete) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                }
+            }
+
+            OutlinedTextField(
+                value = education.institution,
+                onValueChange = { education.institution = it },
+                label = { Text("Institution") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = education.degree,
+                onValueChange = { education.degree = it },
+                label = { Text("Degree") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            OutlinedTextField(
+                value = education.location,
+                onValueChange = { education.location = it },
+                label = { Text("Location") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = education.startDate,
+                    onValueChange = { education.startDate = it },
+                    label = { Text("Start Date") },
+                    modifier = Modifier.weight(1f)
+                )
+
+                OutlinedTextField(
+                    value = education.endDate,
+                    onValueChange = { education.endDate = it },
+                    label = { Text("End Date") },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+
 
 // Safe function to move items in the list
 private fun moveExperienceItem(
@@ -2187,8 +2677,18 @@ private fun handleTemplateDownload(context: Context, resumeData: ResumeData, tem
 fun DownloadResumeScreen(context: Context, resumeData: ResumeData) {
     var showDialog by remember { mutableStateOf(false) }
 
-    Button(onClick = { showDialog = true }) {
-        Text("Download Resume")
+    // Remove the Box entirely - just use the FAB alone
+    FloatingActionButton(
+        onClick = { showDialog = true },
+        modifier = Modifier
+            .padding(16.dp),
+        containerColor = MaterialTheme.colorScheme.primary
+    ) {
+        Icon(
+            imageVector = Icons.Default.Download,
+            contentDescription = "Download Resume",
+            tint = Color.White
+        )
     }
 
     if (showDialog) {

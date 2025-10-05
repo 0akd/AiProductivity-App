@@ -14,12 +14,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.format.TextStyle
 
 data class ProblemData(
     val questionId: String,
@@ -214,13 +216,14 @@ fun ProblemDetailScreen(
                 ) {
                     // Problem Info Card
                     item {
+                        ProblemDescriptionCard(problemData!!.content)
+                    }
+
+                    item {
                         ProblemInfoCard(problemData!!)
                     }
 
                     // Problem Description Card
-                    item {
-                        ProblemDescriptionCard(problemData!!.content)
-                    }
 
                     // Statistics Card
                     item {
@@ -281,8 +284,50 @@ fun ProblemInfoCard(problemData: ProblemData) {
     }
 }
 
+fun decodeHtmlEntities(text: String): String {
+    val entityMap = mapOf(
+        "&nbsp;" to " ", "&lt;" to "<", "&gt;" to ">", "&amp;" to "&",
+        "&quot;" to "\"", "&apos;" to "'", "&le;" to "≤", "&ge;" to "≥",
+        "&lt;=" to "≤", "&gt;=" to "≥", "&equals;" to "=", "&ne;" to "≠",
+        "&plus;" to "+", "&minus;" to "-", "&times;" to "×", "&divide;" to "÷",
+        "&cent;" to "¢", "&pound;" to "£", "&euro;" to "€", "&copy;" to "©",
+        "&reg;" to "®", "&trade;" to "™", "&deg;" to "°", "&permil;" to "‰",
+        "&prime;" to "′", "&Prime;" to "″", "&infin;" to "∞", "&radic;" to "√",
+        "&sum;" to "∑", "&prod;" to "∏", "&int;" to "∫", "&there4;" to "∴",
+        "&because;" to "∵", "&sim;" to "∼", "&cong;" to "≅", "&asymp;" to "≈",
+        "&ne;" to "≠", "&equiv;" to "≡", "&le;" to "≤", "&ge;" to "≥",
+        "&sub;" to "⊂", "&sup;" to "⊃", "&nsub;" to "⊄", "&sube;" to "⊆",
+        "&supe;" to "⊇", "&oplus;" to "⊕", "&otimes;" to "⊗", "&perp;" to "⊥",
+        "&sdot;" to "⋅", "&lceil;" to "⌈", "&rceil;" to "⌉", "&lfloor;" to "⌊",
+        "&rfloor;" to "⌋", "&lang;" to "⟨", "&rang;" to "⟩", "&loz;" to "◊",
+        "&spades;" to "♠", "&clubs;" to "♣", "&hearts;" to "♥", "&diams;" to "♦"
+    )
+
+    var result = text
+    entityMap.forEach { (entity, replacement) ->
+        result = result.replace(entity, replacement)
+    }
+
+    // Handle numeric entities (&#123; and &#x1F;)
+    result = result.replace("&#(\\d+);".toRegex()) { match ->
+        val code = match.groupValues[1].toIntOrNull()
+        if (code != null) Character.toString(code) else match.value
+    }
+
+    result = result.replace("&#x([0-9a-fA-F]+);".toRegex()) { match ->
+        val code = match.groupValues[1].toIntOrNull(16)
+        if (code != null) Character.toString(code) else match.value
+    }
+
+    return result
+}
+
 @Composable
 fun ProblemDescriptionCard(content: String) {
+    val decodedContent = remember(content) {
+        decodeHtmlEntities(content.replace("<[^>]*>".toRegex(), ""))
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
@@ -292,27 +337,30 @@ fun ProblemDescriptionCard(content: String) {
         ) {
             Text(
                 text = "Problem Description",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 20.sp, // Larger title
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
             )
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = content.replace("<[^>]*>".toRegex(), ""), // Basic HTML tag removal
-                style = MaterialTheme.typography.bodyMedium,
+                text = decodedContent,
+                style = androidx.compose.ui.text.TextStyle(
+                    fontSize = 25.sp // Larger content
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(
                         MaterialTheme.colorScheme.surfaceVariant,
                         RoundedCornerShape(8.dp)
                     )
-                    .padding(12.dp)
+                    .padding(16.dp)
             )
         }
     }
 }
-
 @Composable
 fun StatisticsCard(problemData: ProblemData) {
     Card(
