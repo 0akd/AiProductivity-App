@@ -92,8 +92,7 @@ interface LinkedInJobsApi {
                 .create(LinkedInJobsApi::class.java)
         }
     }
-    }
-
+}
 
 // ViewModel
 class JobSearchViewModel : ViewModel() {
@@ -145,31 +144,18 @@ fun JobSearchScreen(
     var under10Applicants by remember { mutableStateOf(false) }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Job Search", style = MaterialTheme.typography.titleLarge) },
-                actions = {
-                    IconButton(onClick = { showFilters = !showFilters }) {
-                        Badge(
-                            containerColor = if (showFilters) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant
-                        ) {
-                            Icon(Icons.Default.FilterList, "Toggle Filters")
-                        }
-                    }
-                }
-            )
-        }
+
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+
         ) {
             // Compact Search Section
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                  ,
                 elevation = CardDefaults.cardElevation(2.dp)
             ) {
                 Column(
@@ -296,36 +282,62 @@ fun JobSearchScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    // Compact Search Button
-                    Button(
-                        onClick = {
-                            viewModel.searchJobs(
-                                JobSearchRequest(
-                                    keyword = keyword,
-                                    location = location,
-                                    dateSincePosted = dateSincePosted,
-                                    jobType = jobType,
-                                    remoteFilter = remoteFilter,
-                                    salary = salary,
-                                    experienceLevel = experienceLevel,
-                                    limit = limit,
-                                    has_verification = hasVerification,
-                                    under_10_applicants = under10Applicants
-                                )
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp),
-                        enabled = !viewModel.isLoading
+                    // Search and Filter Button Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            Icons.Default.Search,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Search", style = MaterialTheme.typography.labelLarge)
+                        // Filter Button on the left
+                        OutlinedButton(
+                            onClick = { showFilters = !showFilters },
+                            modifier = Modifier
+                                .weight(0.3f)
+                                .height(44.dp),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (showFilters) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surface
+                            )
+                        ) {
+                            Icon(
+                                Icons.Default.FilterList,
+                                contentDescription = "Filters",
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Filter", style = MaterialTheme.typography.labelMedium)
+                        }
+
+                        // Search Button on the right
+                        Button(
+                            onClick = {
+                                viewModel.searchJobs(
+                                    JobSearchRequest(
+                                        keyword = keyword,
+                                        location = location,
+                                        dateSincePosted = dateSincePosted,
+                                        jobType = jobType,
+                                        remoteFilter = remoteFilter,
+                                        salary = salary,
+                                        experienceLevel = experienceLevel,
+                                        limit = limit,
+                                        has_verification = hasVerification,
+                                        under_10_applicants = under10Applicants
+                                    )
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(0.7f)
+                                .height(44.dp),
+                            enabled = !viewModel.isLoading
+                        ) {
+                            Icon(
+                                Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Search", style = MaterialTheme.typography.labelLarge)
+                        }
                     }
                 }
             }

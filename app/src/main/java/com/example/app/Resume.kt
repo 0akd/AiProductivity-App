@@ -60,7 +60,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import com.google.gson.reflect.TypeToken
-
+import coil.compose.LocalImageLoader
+import coil.compose.AsyncImage
+import coil.request.ImageRequest
 class SharedPreferencesManager(private val sharedPreferences: SharedPreferences) {
     private val gson = Gson()
 
@@ -428,6 +430,28 @@ fun ResumeBuilderApp() {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val repository = remember { ResumeRepository(context) }
+    val imageLoader = LocalImageLoader.current
+
+    // Preload template images when the app starts
+    LaunchedEffect(Unit) {
+        val templateUrls = listOf(
+            "https://www.getsetresumes.com/storage/resume-examples/December2021/enSlu3qMB9l9VWDyFHgP.jpg",
+            // Add other template URLs here
+        )
+
+        templateUrls.forEach { url ->
+            try {
+                val request = ImageRequest.Builder(context)
+                    .data(url)
+                    .size(100, 100) // Preload at the size you'll display
+                    .build()
+                imageLoader.enqueue(request)
+            } catch (e: Exception) {
+                // Handle preloading errors silently
+                println("Failed to preload image: $url - ${e.message}")
+            }
+        }
+    }
 
     // Profile management states
     var profiles by remember { mutableStateOf<List<ProfileInfo>>(emptyList()) }
@@ -507,195 +531,212 @@ fun ResumeBuilderApp() {
             color = MaterialTheme.colorScheme.primaryContainer,
             shadowElevation = 4.dp
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Title section
+            Box() {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
-                        .clickable { showProfileDropdown = true }
-                        .padding(horizontal = 8.dp)
-                ) {
-                    Text(
-                        text = selectedProfile?.name ?: "No Profile",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Select Profile",
-                        modifier = Modifier
-                            .padding(start = 4.dp)
-                            .size(20.dp)
-                    )
-                }
-
-                // Actions section
-                Row(
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Profile management button
-                    IconButton(
-                        onClick = { showProfileDialog = ProfileDialogState.CREATE },
-                        modifier = Modifier.size(40.dp)
+                    // Title section
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clickable { showProfileDropdown = true }
+                            .padding(horizontal = 8.dp)
                     ) {
+                        Text(
+                            text = selectedProfile?.name ?: "No Profile",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
                         Icon(
-                            Icons.Default.Add,
-                            contentDescription = "Add Profile",
-                            modifier = Modifier.size(20.dp)
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = "Select Profile",
+                            modifier = Modifier
+                                .padding(start = 4.dp)
+                                .size(20.dp)
                         )
                     }
 
-                    // Refresh profiles button (for debugging)
-                    IconButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                isLoading = true
-                                repository.loadProfiles().fold(
-                                    onSuccess = { loadedProfiles ->
-                                        profiles = loadedProfiles
-                                        Toast.makeText(context, "Loaded ${loadedProfiles.size} profiles", Toast.LENGTH_SHORT).show()
-                                        isLoading = false
-                                    },
-                                    onFailure = { error ->
-                                        Toast.makeText(context, "Refresh failed: ${error.message}", Toast.LENGTH_SHORT).show()
-                                        isLoading = false
-                                    }
-                                )
-                            }
-                        },
-                        modifier = Modifier.size(40.dp)
+                    // Actions section
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = "Refresh Profiles",
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    // Edit profile button
-                    selectedProfile?.let {
+                        // Profile management button
                         IconButton(
-                            onClick = { showProfileDialog = ProfileDialogState.EDIT },
+                            onClick = { showProfileDialog = ProfileDialogState.CREATE },
                             modifier = Modifier.size(40.dp)
                         ) {
                             Icon(
-                                Icons.Default.Edit,
-                                contentDescription = "Edit Profile",
+                                Icons.Default.Add,
+                                contentDescription = "Add Profile",
                                 modifier = Modifier.size(20.dp)
                             )
                         }
-                    }
 
-                    // Delete profile button
-                    if (profiles.size > 1) {
+                        // Refresh profiles button (for debugging)
+                        IconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    isLoading = true
+                                    repository.loadProfiles().fold(
+                                        onSuccess = { loadedProfiles ->
+                                            profiles = loadedProfiles
+                                            Toast.makeText(
+                                                context,
+                                                "Loaded ${loadedProfiles.size} profiles",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            isLoading = false
+                                        },
+                                        onFailure = { error ->
+                                            Toast.makeText(
+                                                context,
+                                                "Refresh failed: ${error.message}",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            isLoading = false
+                                        }
+                                    )
+                                }
+                            },
+                            modifier = Modifier.size(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Refresh Profiles",
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+
+                        // Edit profile button
                         selectedProfile?.let {
                             IconButton(
-                                onClick = { showProfileDialog = ProfileDialogState.DELETE },
+                                onClick = { showProfileDialog = ProfileDialogState.EDIT },
                                 modifier = Modifier.size(40.dp)
                             ) {
                                 Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = "Delete Profile",
+                                    Icons.Default.Edit,
+                                    contentDescription = "Edit Profile",
                                     modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
-                    }
 
-                    // Save button
-                    if (isLoading) {
-                        Box(
-                            modifier = Modifier.size(40.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp
-                            )
+                        // Delete profile button
+                        if (profiles.size > 1) {
+                            selectedProfile?.let {
+                                IconButton(
+                                    onClick = { showProfileDialog = ProfileDialogState.DELETE },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Delete Profile",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
-                    } else {
-                        selectedProfile?.let { profile ->
-                            IconButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        isLoading = true
-                                        repository.saveResumeData(profile.id, resumeData).fold(
-                                            onSuccess = { message ->
-                                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                                isLoading = false
-                                            },
-                                            onFailure = { error ->
-                                                Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_SHORT).show()
-                                                isLoading = false
-                                            }
-                                        )
-                                    }
-                                },
-                                modifier = Modifier.size(40.dp)
+
+                        // Save button
+                        if (isLoading) {
+                            Box(
+                                modifier = Modifier.size(40.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    Icons.Default.Save,
-                                    contentDescription = "Save Resume",
-                                    modifier = Modifier.size(20.dp)
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
                                 )
+                            }
+                        } else {
+                            selectedProfile?.let { profile ->
+                                IconButton(
+                                    onClick = {
+                                        coroutineScope.launch {
+                                            isLoading = true
+                                            repository.saveResumeData(profile.id, resumeData).fold(
+                                                onSuccess = { message ->
+                                                    Toast.makeText(
+                                                        context,
+                                                        message,
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                    isLoading = false
+                                                },
+                                                onFailure = { error ->
+                                                    Toast.makeText(
+                                                        context,
+                                                        "Save failed: ${error.message}",
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                    isLoading = false
+                                                }
+                                            )
+                                        }
+                                    },
+                                    modifier = Modifier.size(40.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Save,
+                                        contentDescription = "Save Resume",
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        // Profile dropdown menu
-        DropdownMenu(
-            expanded = showProfileDropdown,
-            onDismissRequest = { showProfileDropdown = false }
-        ) {
-            profiles.forEach { profile ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(
-                                text = profile.name,
-                                fontWeight = if (profile.id == selectedProfile?.id) FontWeight.Bold else FontWeight.Normal
-                            )
-                            Text(
-                                text = profile.description,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    },
-                    onClick = {
-                        selectedProfile = profile
-                        showProfileDropdown = false
-                        // Load resume data for selected profile
-                        coroutineScope.launch {
-                            isLoading = true
-                            repository.loadResumeData(profile.id).fold(
-                                onSuccess = { loadedData ->
-                                    loadedData?.let {
-                                        resumeData.copyFrom(it)
+            // Profile dropdown menu
+            DropdownMenu(
+                expanded = showProfileDropdown,
+                onDismissRequest = { showProfileDropdown = false }
+            ) {
+                profiles.forEach { profile ->
+                    DropdownMenuItem(
+                        text = {
+                            Column {
+                                Text(
+                                    text = profile.name,
+                                    fontWeight = if (profile.id == selectedProfile?.id) FontWeight.Bold else FontWeight.Normal
+                                )
+                                Text(
+                                    text = profile.description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        onClick = {
+                            selectedProfile = profile
+                            showProfileDropdown = false
+                            // Load resume data for selected profile
+                            coroutineScope.launch {
+                                isLoading = true
+                                repository.loadResumeData(profile.id).fold(
+                                    onSuccess = { loadedData ->
+                                        loadedData?.let {
+                                            resumeData.copyFrom(it)
+                                        }
+                                        isLoading = false
+                                    },
+                                    onFailure = {
+                                        // Reset to empty resume data if loading fails
+                                        resumeData.copyFrom(ResumeData())
+                                        isLoading = false
                                     }
-                                    isLoading = false
-                                },
-                                onFailure = {
-                                    // Reset to empty resume data if loading fails
-                                    resumeData.copyFrom(ResumeData())
-                                    isLoading = false
-                                }
-                            )
+                                )
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
         }
-
         // Tab Row
         TabRow(
             selectedTabIndex = selectedTab.value.ordinal,
@@ -2564,9 +2605,9 @@ fun TemplatePickerDialog(
     onDismiss: () -> Unit
 ) {
     val templateImages = mapOf(
-        "Template 1" to "https://images.unsplash.com/photo-1682686581740-2c5f76eb86d1?q=80&w=1171&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDF8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D",
-        "Template 2" to "https://yourcdn.com/template2.png",
-        "Template 3" to "https://yourcdn.com/template3.png"
+        "Developer" to "https://www.getsetresumes.com/storage/resume-examples/December2021/enSlu3qMB9l9VWDyFHgP.jpg",
+//        "Template 2" to "https://yourcdn.com/template2.png",
+//        "Template 3" to "https://yourcdn.com/template3.png"
     )
 
     AlertDialog(
@@ -2604,7 +2645,7 @@ fun TemplatePickerDialog(
 
 private fun handleTemplateDownload(context: Context, resumeData: ResumeData, templateKey: String) {
     val templateUrls = mapOf(
-        "Template 1" to "http://arjundubey.com/resume/template1",
+        "Developer" to "http://arjundubey.com/resume/template1",
         "Template 2" to "http://arjundubey.com/resume/template2",
         "Template 3" to "http://arjundubey.com/resume/template3"
     )

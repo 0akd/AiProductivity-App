@@ -54,7 +54,7 @@ data class ScrapedContent(
     val title: String = "",
     val content: String = "",
     val sourceUrl: String = "",
-    val description: String = "",
+    var description: String = "",
     val additionalInfo: String = ""
 )
 
@@ -282,7 +282,7 @@ fun ScraperJobScreen() {
                         OutlinedTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
-                            placeholder = { Text("🔍 Search Hackathons, Organisers...") },
+                            placeholder = { Text("🔍 Search roles for internships") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
@@ -563,18 +563,17 @@ fun ScraperJobScreen() {
                 }
             }
         } else if (allContent.isEmpty() && !showInitialLoader) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "No hackathons found yet. Still searching...",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
-                )
-            }
+            LoadingScreen(
+                messages = listOf(
+                    "Please wait...",
+                    "Loading your data...",
+                    "Almost there...",
+                    "Just a moment...",
+                    "maybe you have slow internet",
+                    "uffffff",
+                    "just right there ",
+                    "i beg dont go",
+                ))
         } else {
             LazyColumn(
                 modifier = Modifier
@@ -689,6 +688,10 @@ fun ScraperJobScreen() {
     }
     ChatTriggerPopup(allContent, welcomeText = "ask me about internship or job or tell me your skill i wil find the best suiting one ")
 }
+
+
+// Make sure your ScrapedContent data class is defined like this:
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ScraperScreen() {

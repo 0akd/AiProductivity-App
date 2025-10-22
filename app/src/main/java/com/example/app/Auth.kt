@@ -71,16 +71,35 @@ fun AuthScreen(
             val account = task.getResult(ApiException::class.java)
             val credential = GoogleAuthProvider.getCredential(account.idToken, null)
 
+            loading = true // Show loading state
             auth.signInWithCredential(credential)
                 .addOnCompleteListener { task ->
+                    loading = false
                     if (task.isSuccessful) {
                         user = auth.currentUser
+                        // Update the UI states
+                        isLoggedIn = true
+                        userEmail = auth.currentUser?.email ?: ""
+
+                        // Save user to Firestore
+                        saveUserToFirestore(
+                            account = account,
+                            firestore = firestore,
+                            context = context
+                        ) {
+                            onLoginSuccess()
+                        }
+
+                        Toast.makeText(context, "Google Sign-In Success", Toast.LENGTH_SHORT).show()
                     } else {
                         Log.e("Auth", "Firebase sign in failed", task.exception)
+                        Toast.makeText(context, "Sign-In Failed: ${task.exception?.localizedMessage}", Toast.LENGTH_SHORT).show()
                     }
                 }
         } catch (e: ApiException) {
+            loading = false
             Log.e("GoogleSignIn", "Google sign-in failed", e)
+            Toast.makeText(context, "Google Sign-In Failed: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 

@@ -15,8 +15,8 @@ android {
         applicationId = "com.arjundubey.app"
         minSdk = 24
         targetSdk = 36
-        versionCode =3
-        versionName = "1.2"
+        versionCode =8
+        versionName = "1.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -43,10 +43,11 @@ android {
 }
 
 dependencies {
-    // Retrofit
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+
+    implementation("com.squareup.okhttp3:logging-interceptor:4.10.0")
+
+
 // Coil for image loading
     implementation("io.coil-kt:coil-compose:2.4.0")
 // Markdown support

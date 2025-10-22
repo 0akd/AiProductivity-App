@@ -7,6 +7,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -21,7 +22,6 @@ import org.json.JSONObject
 import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
-import java.time.format.TextStyle
 
 data class ProblemData(
     val questionId: String,
@@ -48,14 +48,12 @@ fun parseJsonResponse(jsonString: String): ProblemData? {
     return try {
         val json = JSONObject(jsonString)
 
-        // Parse hints array
         val hintsArray = json.optJSONArray("hints") ?: JSONArray()
         val hints = mutableListOf<String>()
         for (i in 0 until hintsArray.length()) {
             hints.add(hintsArray.getString(i))
         }
 
-        // Parse topic tags array
         val topicTagsArray = json.optJSONArray("topicTags") ?: JSONArray()
         val topicTags = mutableListOf<String>()
         for (i in 0 until topicTagsArray.length()) {
@@ -92,13 +90,13 @@ fun parseJsonResponse(jsonString: String): ProblemData? {
 fun ProblemDetailScreen(
     slug: String,
     url: String,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onSearchClick: (String) -> Unit // New callback for search
 ) {
     var problemData by remember { mutableStateOf<ProblemData?>(null) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Construct the API URL with the slug
     val apiUrl = "https://leetcode-api-pied.vercel.app/problem/$slug"
 
     LaunchedEffect(slug) {
@@ -106,7 +104,6 @@ fun ProblemDetailScreen(
             isLoading = true
             errorMessage = null
 
-            // Make API call
             val response = withContext(Dispatchers.IO) {
                 val url = URL(apiUrl)
                 val connection = url.openConnection() as HttpURLConnection
@@ -133,128 +130,149 @@ fun ProblemDetailScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        // Back button and title
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp)
         ) {
-            IconButton(onClick = onBackClick) {
+            // Back button and title
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBackClick) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back"
+                    )
+                }
+
+                Text(
+                    text = problemData?.title ?: "Problem: $slug",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.width(48.dp))
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Content area
+            when {
+                isLoading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            CircularProgressIndicator()
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Loading problem data...")
+                        }
+                    }
+                }
+
+                errorMessage != null -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Error,
+                                contentDescription = "Error",
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(48.dp)
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = errorMessage!!,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Button(onClick = {
+                                problemData = null
+                                isLoading = true
+                                errorMessage = null
+                            }) {
+                                Text("Retry")
+                            }
+                        }
+                    }
+                }
+
+                problemData != null -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        item {
+                            ProblemDescriptionCard(problemData!!.content)
+                        }
+
+                        item {
+                            ProblemInfoCard(problemData!!)
+                        }
+
+                        item {
+                            StatisticsCard(problemData!!)
+                        }
+
+                        item {
+                            TopicTagsCard(problemData!!.topicTags)
+                        }
+
+                        if (problemData!!.hints.isNotEmpty()) {
+                            item {
+                                HintsCard(problemData!!.hints)
+                            }
+                        }
+
+                        item {
+                            AdditionalInfoCard(problemData!!)
+                        }
+
+                        // Extra space for FAB
+                        item {
+                            Spacer(modifier = Modifier.height(80.dp))
+                        }
+                    }
+                }
+            }
+        }
+
+        // Floating Action Button for Search
+        if (problemData != null) {
+            FloatingActionButton(
+                onClick = {
+                    onSearchClick(problemData!!.title + " leetcode")
+                },
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(16.dp),
+                containerColor = MaterialTheme.colorScheme.primary
+            ) {
                 Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back"
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search for solutions"
                 )
             }
-
-            Text(
-                text = problemData?.title ?: "Problem: $slug",
-                style = MaterialTheme.typography.headlineSmall,
-                modifier = Modifier.weight(1f),
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.width(48.dp)) // Balance the back button
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Content area
-        when {
-            isLoading -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text("Loading problem data...")
-                    }
-                }
-            }
-
-            errorMessage != null -> {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Error,
-                            contentDescription = "Error",
-                            tint = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.size(48.dp)
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = errorMessage!!,
-                            color = MaterialTheme.colorScheme.error,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = {
-                            // Trigger retry by changing the LaunchedEffect key
-                            problemData = null
-                            isLoading = true
-                            errorMessage = null
-                        }) {
-                            Text("Retry")
-                        }
-                    }
-                }
-            }
-
-            problemData != null -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Problem Info Card
-                    item {
-                        ProblemDescriptionCard(problemData!!.content)
-                    }
-
-                    item {
-                        ProblemInfoCard(problemData!!)
-                    }
-
-                    // Problem Description Card
-
-                    // Statistics Card
-                    item {
-                        StatisticsCard(problemData!!)
-                    }
-
-                    // Topic Tags Card
-                    item {
-                        TopicTagsCard(problemData!!.topicTags)
-                    }
-
-                    // Hints Card
-                    if (problemData!!.hints.isNotEmpty()) {
-                        item {
-                            HintsCard(problemData!!.hints)
-                        }
-                    }
-
-                    // Additional Info Card
-                    item {
-                        AdditionalInfoCard(problemData!!)
-                    }
-                }
-            }
+        // Chat Trigger Popup
+        if (problemData != null) {
+            val list = listOf(ScrapedContent(problemData!!.content))
+            ChatTriggerPopup(
+                list,
+                welcomeText = "Ah i see i know this question very well so what should i tell you hint solution or thinking methodology (my model takes time so please wait upto 60 seconds)"
+            )
         }
     }
-    if (problemData != null) {
-    val list = listOf(ScrapedContent(problemData!!.content))
-
-
-    ChatTriggerPopup(list)}
 }
 
 @Composable
@@ -308,7 +326,6 @@ fun decodeHtmlEntities(text: String): String {
         result = result.replace(entity, replacement)
     }
 
-    // Handle numeric entities (&#123; and &#x1F;)
     result = result.replace("&#(\\d+);".toRegex()) { match ->
         val code = match.groupValues[1].toIntOrNull()
         if (code != null) Character.toString(code) else match.value
@@ -336,9 +353,9 @@ fun ProblemDescriptionCard(content: String) {
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "Problem Description",
+                text = "Question",
                 style = androidx.compose.ui.text.TextStyle(
-                    fontSize = 20.sp, // Larger title
+                    fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -348,7 +365,7 @@ fun ProblemDescriptionCard(content: String) {
             Text(
                 text = decodedContent,
                 style = androidx.compose.ui.text.TextStyle(
-                    fontSize = 25.sp // Larger content
+                    fontSize = 25.sp
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -361,6 +378,7 @@ fun ProblemDescriptionCard(content: String) {
         }
     }
 }
+
 @Composable
 fun StatisticsCard(problemData: ProblemData) {
     Card(

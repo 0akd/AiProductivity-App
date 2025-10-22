@@ -7,12 +7,57 @@
   "client": [
     {
       "client_info": {
+        "mobilesdk_app_id": "1:101881111630:android:7993b50c66e689eb76cf1f",
+        "android_client_info": {
+          "package_name": "com.arjun.biotrace"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "101881111630-p8m0a6s42ou7saif6opjmv1hrfv0cc3m.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.arjun.biotrace",
+            "certificate_hash": "e4603826a4ebab01e2b3d9331e33cdcc91733ecc"
+          }
+        },
+        {
+          "client_id": "101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDbHtLQZTBqogri7HI3XVfXg82zs_BrNfk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
         "mobilesdk_app_id": "1:101881111630:android:de8f2d8885b33db576cf1f",
         "android_client_info": {
           "package_name": "com.arjundubey.app"
         }
       },
       "oauth_client": [
+        {
+          "client_id": "101881111630-a4kh5bgva975ld6631afthb8u35ccacb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.arjundubey.app",
+            "certificate_hash": "d15d8db81e1b7f3b7a31800d6a34993f1aa6537a"
+          }
+        },
         {
           "client_id": "101881111630-i168pccki611htojqfbqq9rmje00iecm.apps.googleusercontent.com",
           "client_type": 3

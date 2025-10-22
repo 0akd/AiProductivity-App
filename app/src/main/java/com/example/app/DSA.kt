@@ -5,7 +5,10 @@ package com.arjundubey.app
 // Required imports
 
 import android.provider.Settings
-
+import kotlinx.coroutines.yield
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.CoroutineScope
 import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -658,55 +661,6 @@ fun levenshteinDistance(str1: String, str2: String): Int {
 }
 
 // Function to match problems with arrays and assign priorities
-fun matchProblemsWithArrays(problems: List<ProblemStat>): List<EnhancedProblemStat> {
-    val enhancedProblems = mutableListOf<EnhancedProblemStat>()
-    val arrays = QuestionArrays.getAllArrays()
-
-    for (problem in problems) {
-        val questionSlug = problem.stat.question__title_slug
-        var bestMatch = 0.0
-        var bestArrayIndex = 0
-        var bestPriority = 0
-
-        // Check against all arrays
-        for ((arrayIndex, questionArray) in arrays) {
-            for (arrayQuestion in questionArray) {
-                val similarity = calculateSimilarity(questionSlug.lowercase(), arrayQuestion.lowercase())
-
-                // If similarity is >= 70%, consider it a match
-                if (similarity >= 0.7 && similarity > bestMatch) {
-                    bestMatch = similarity
-                    bestArrayIndex = arrayIndex
-                    bestPriority = arrayIndex
-                }
-            }
-        }
-
-        val enhancedProblem = EnhancedProblemStat(
-            stat = problem.stat,
-            status = problem.status,
-            difficulty = problem.difficulty,
-            paid_only = problem.paid_only,
-            is_favor = problem.is_favor,
-            frequency = problem.frequency,
-            progress = problem.progress,
-            priority = bestPriority,
-            matchPercentage = bestMatch * 100,
-            matchedArray = bestArrayIndex
-        )
-
-        enhancedProblems.add(enhancedProblem)
-
-        if (bestPriority > 0) {
-            Log.d("ProblemMatcher", "Matched '${questionSlug}' with array $bestArrayIndex (${bestMatch * 100}% similarity)")
-        }
-    }
-
-    // Sort by priority (higher first), then by match percentage, then by question ID
-    return enhancedProblems.sortedWith(compareByDescending<EnhancedProblemStat> { it.priority }
-        .thenByDescending { it.matchPercentage }
-        .thenBy { it.stat.frontend_question_id })
-}
 
 
 private const val PREFS_NAME = "LeetCodePrefs"
@@ -1275,41 +1229,6 @@ fun handleNotificationClick(intent: Intent?, onOpenProblemDetail: (String, Strin
 }
 
 
-// Data class to hold category information
-data class ProblemCategory(
-    val categoryTitle: String = "N/A",
-    val isLoading: Boolean = false,
-    val error: String? = null
-)
-
-// Function to fetch category title from LeetCode API
-suspend fun fetchProblemCategory(slug: String): ProblemCategory {
-    return try {
-        val apiUrl = "https://leetcode-api-pied.vercel.app/problem/$slug"
-
-        val response = withContext(Dispatchers.IO) {
-            val url = URL(apiUrl)
-            val connection = url.openConnection() as HttpURLConnection
-            connection.requestMethod = "GET"
-            connection.connectTimeout = 10000
-            connection.readTimeout = 10000
-
-            if (connection.responseCode == 200) {
-                connection.inputStream.bufferedReader().use { it.readText() }
-            } else {
-                throw Exception("HTTP ${connection.responseCode}: ${connection.responseMessage}")
-            }
-        }
-
-        val json = JSONObject(response)
-        val categoryTitle = json.optString("categoryTitle", "N/A")
-
-        ProblemCategory(categoryTitle = categoryTitle)
-
-    } catch (e: Exception) {
-        ProblemCategory(error = e.message)
-    }
-}
 
 
 private const val KEY_LAST_FETCH_TIME = "LastFetchTime" // NEW
@@ -1382,11 +1301,140 @@ fun clearCache(context: Context) {
     editor.apply()
     Log.d("Cache", "Cache cleared")
 }
-// Modified LeetCodeScreen with category fetching
+
+// OPTIMIZED VERSION - Replace your existing functions with these
+// Add these imports at the top of your file:
+// import kotlinx.coroutines.yield
+// import kotlinx.coroutines.launch
+// import androidx.compose.runtime.rememberCoroutineScope
+
+// 1. Optimized matching with HashSet lookup instead of nested loops
+fun matchProblemsWithArrays(problems: List<ProblemStat>): List<EnhancedProblemStat> {
+    val enhancedProblems = mutableListOf<EnhancedProblemStat>()
+    val arrays = QuestionArrays.getAllArrays()
+
+    // Create HashMaps for O(1) lookup instead of O(n) search
+    val arrayMaps = arrays.map { (index, questions) ->
+        index to questions.associateWith { it }
+    }.toMap()
+
+    for (problem in problems) {
+        val questionSlug = problem.stat.question__title_slug?.lowercase() ?: ""
+        var bestMatch = 0.0
+        var bestArrayIndex = 0
+        var bestPriority = 0
+
+        // Check exact matches first (much faster)
+        for ((arrayIndex, questionMap) in arrayMaps) {
+            if (questionMap.containsKey(questionSlug)) {
+                bestMatch = 100.0
+                bestArrayIndex = arrayIndex
+                bestPriority = arrayIndex
+                break
+            }
+        }
+
+        // Only do expensive similarity calculation if no exact match found
+        if (bestMatch == 0.0) {
+            for ((arrayIndex, questionArray) in arrays) {
+                for (arrayQuestion in questionArray) {
+                    // Quick pre-check: if lengths are too different, skip
+                    if (kotlin.math.abs(questionSlug.length - arrayQuestion.length) > 10) {
+                        continue
+                    }
+
+                    val similarity = calculateSimilarity(questionSlug, arrayQuestion.lowercase())
+
+                    if (similarity >= 0.7 && similarity > bestMatch) {
+                        bestMatch = similarity
+                        bestArrayIndex = arrayIndex
+                        bestPriority = arrayIndex
+                    }
+                }
+            }
+        }
+
+        val enhancedProblem = EnhancedProblemStat(
+            stat = problem.stat,
+            status = problem.status,
+            difficulty = problem.difficulty,
+            paid_only = problem.paid_only,
+            is_favor = problem.is_favor,
+            frequency = problem.frequency,
+            progress = problem.progress,
+            priority = bestPriority,
+            matchPercentage = bestMatch,
+            matchedArray = bestArrayIndex
+        )
+
+        enhancedProblems.add(enhancedProblem)
+    }
+
+    // Sort by priority
+    return enhancedProblems.sortedWith(
+        compareByDescending<EnhancedProblemStat> { it.priority }
+            .thenByDescending { it.matchPercentage }
+            .thenBy { it.stat.frontend_question_id }
+    )
+}
+
+// 2. Process problems in chunks to avoid blocking
+suspend fun processProblemsInChunks(
+    problems: List<ProblemStat>,
+    chunkSize: Int = 500
+): List<EnhancedProblemStat> = withContext(Dispatchers.Default) {
+    val results = mutableListOf<EnhancedProblemStat>()
+
+    problems.chunked(chunkSize).forEach { chunk ->
+        val processed = matchProblemsWithArrays(chunk)
+        results.addAll(processed)
+        // Allow other coroutines to run
+        yield()
+    }
+
+    // Final sort
+    results.sortedWith(
+        compareByDescending<EnhancedProblemStat> { it.priority }
+            .thenByDescending { it.matchPercentage }
+            .thenBy { it.stat.frontend_question_id }
+    )
+}
+
+// 3. Optimized fetch with progress callback
+suspend fun fetchAndProcessProblems(
+    context: Context,
+    onProgress: (String) -> Unit = {}
+): List<EnhancedProblemStat> = withContext(Dispatchers.IO) {
+    onProgress("Fetching problems from LeetCode...")
+
+    val fetchedProblems = fetchLeetCodeProblemsWithRetry()
+
+    onProgress("Processing ${fetchedProblems.size} problems...")
+
+    // Switch to Default dispatcher for CPU-intensive work
+    val enhancedProblems = withContext(Dispatchers.Default) {
+        processProblemsInChunks(fetchedProblems)
+    }
+
+    onProgress("Saving to cache...")
+
+    // Save in background
+    withContext(Dispatchers.IO) {
+        saveEnhancedProblemsToCache(context, enhancedProblems)
+        updateProblemsCache(context, enhancedProblems)
+    }
+
+    onProgress("Done!")
+
+    enhancedProblems
+}
+
+// 4. COMPLETELY REWRITTEN LeetCodeScreen with proper state management
 @Composable
 fun LeetCodeScreen(
     notificationProblemSlug: String? = null,
-    onNotificationHandled: () -> Unit = {}
+    onNotificationHandled: () -> Unit = {},
+    onProblemClick: (slug: String, url: String) -> Unit = { _, _ -> } // NEW PARAMETER
 ) {
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -1398,191 +1446,118 @@ fun LeetCodeScreen(
         var selectedProblem by remember { mutableStateOf<EnhancedProblemStat?>(null) }
         var isUsingCachedData by remember { mutableStateOf(false) }
         var showRefreshButton by remember { mutableStateOf(false) }
+        var loadingProgress by remember { mutableStateOf("") }
         val context = LocalContext.current
+        val coroutineScope = rememberCoroutineScope()
 
         var checkedMap by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
-        var categoryMap by remember { mutableStateOf<Map<String, ProblemCategory>>(emptyMap()) }
-        var isRefreshing by remember { mutableStateOf(false) }
 
-
-        // Refresh function - NOT composable, just a regular function
-        val refreshData = {
+        // Single function to load data
+        suspend fun loadDataFromCache() {
             isLoading = true
             errorMessage = null
-            showRefreshButton = false
-            clearCache(context)
+            loadingProgress = "Checking cache..."
+
+            try {
+                val cachedProblems = withContext(Dispatchers.IO) {
+                    getCachedEnhancedProblems(context)
+                }
+
+                if (cachedProblems.isNotEmpty() && isCacheValid(context)) {
+                    loadingProgress = "Loading from cache..."
+                    problems = cachedProblems
+                    isUsingCachedData = true
+                    showRefreshButton = true
+                    isLoading = false
+
+                    withContext(Dispatchers.IO) {
+                        updateProblemsCache(context, cachedProblems)
+                    }
+
+                } else {
+                    // Fetch fresh data
+                    val fresh = fetchAndProcessProblems(context) { progress ->
+                        loadingProgress = progress
+                    }
+
+                    problems = fresh
+                    isUsingCachedData = false
+                    showRefreshButton = true
+                    errorMessage = null
+                }
+            } catch (e: Exception) {
+                errorMessage = "Failed: ${e.message}"
+                Log.e("LoadData", "Error", e)
+
+                val cachedProblems = withContext(Dispatchers.IO) {
+                    getCachedEnhancedProblems(context)
+                }
+                if (cachedProblems.isNotEmpty()) {
+                    problems = cachedProblems
+                    isUsingCachedData = true
+                    errorMessage = "Using cached data (network error)"
+                }
+            } finally {
+                isLoading = false
+                loadingProgress = ""
+            }
         }
 
-        // Handle notification clicks
+        // Function for background refresh
+        fun startBackgroundRefresh() {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    val fresh = fetchAndProcessProblems(context) { }
+                    withContext(Dispatchers.Main) {
+                        problems = fresh
+                        isUsingCachedData = false
+                    }
+                } catch (e: Exception) {
+                    Log.d("BackgroundRefresh", "Failed: ${e.message}")
+                }
+            }
+        }
+
+        // Load function wrapper
+        val loadData = remember {
+            suspend {
+                loadDataFromCache()
+                // Start background refresh if we loaded from cache
+                if (isUsingCachedData && problems.isNotEmpty()) {
+                    startBackgroundRefresh()
+                }
+            }
+        }
+
+        // Initial load - SINGLE LaunchedEffect
+        LaunchedEffect(Unit) {
+            // Load checked map first (fast)
+            checkedMap = withContext(Dispatchers.IO) {
+                getCheckedMap(context)
+            }
+
+            // Then load problems
+            loadData()
+        }
+
+        // Handle notifications
         LaunchedEffect(notificationProblemSlug, problems) {
             if (notificationProblemSlug != null && problems.isNotEmpty()) {
                 val problemToOpen = problems.find {
                     it.stat.question__title_slug == notificationProblemSlug
                 }
                 if (problemToOpen != null) {
-                    selectedProblem = problemToOpen
+                    // Use the callback instead of setting selectedProblem
+                    onProblemClick(
+                        problemToOpen.stat.question__title_slug ?: "",
+                        "https://leetcode.com/problems/${problemToOpen.stat.question__title_slug}/"
+                    )
                     onNotificationHandled()
                 }
             }
         }
 
-        // Main data loading effect
-        // Improved data loading effect with better error handling
-        LaunchedEffect(Unit) {
-            // Small delay to ensure app is fully initialized
-            delay(500)
-
-            // First, try to load from cache
-            val cachedProblems = getCachedEnhancedProblems(context)
-            if (cachedProblems.isNotEmpty() && isCacheValid(context)) {
-                problems = cachedProblems
-                isUsingCachedData = true
-                showRefreshButton = true
-                Log.d("Cache", "Loaded ${cachedProblems.size} problems from cache")
-                updateProblemsCache(context, cachedProblems)
-
-                // Even with cached data, try to fetch fresh data in background
-                launch {
-                    try {
-                        val freshProblems = fetchLeetCodeProblemsWithRetry()
-                        if (freshProblems.isNotEmpty()) {
-                            val enhancedProblems = matchProblemsWithArrays(freshProblems)
-                            problems = enhancedProblems
-                            saveEnhancedProblemsToCache(context, enhancedProblems)
-                            updateProblemsCache(context, enhancedProblems)
-                            isUsingCachedData = false
-                            Log.d("Cache", "Background refresh successful")
-                        }
-                    } catch (e: Exception) {
-                        Log.d("Cache", "Background refresh failed, keeping cached data")
-                        // Keep using cached data if background refresh fails
-                    }
-                }
-            } else {
-                // No valid cache, fetch fresh data with retry logic
-                isLoading = true
-                try {
-                    val fetchedProblems = fetchLeetCodeProblemsWithRetry()
-                    val savedSlugs = getSavedProblems(context).toMutableSet()
-                    val newProblems = fetchedProblems.filterNot { savedSlugs.contains(it.stat.question__title_slug) }
-
-                    if (newProblems.isNotEmpty()) {
-                        val newSlugs = newProblems.mapNotNull { it.stat.question__title_slug }
-                        savedSlugs.addAll(newSlugs)
-                        saveProblems(context, savedSlugs)
-                    }
-
-                    val enhancedProblems = matchProblemsWithArrays(fetchedProblems)
-                    problems = enhancedProblems
-                    saveEnhancedProblemsToCache(context, enhancedProblems)
-                    updateProblemsCache(context, enhancedProblems)
-                    isUsingCachedData = false
-                    showRefreshButton = true
-                    errorMessage = null
-
-                } catch (e: Exception) {
-                    errorMessage = "Failed to load problems: ${e.message}"
-                    e.printStackTrace()
-
-                    // If fetch fails but we have ANY cached data, use it
-                    if (cachedProblems.isNotEmpty()) {
-                        problems = cachedProblems
-                        isUsingCachedData = true
-                        showRefreshButton = true
-                        errorMessage = "Using cached data (network error: ${e.message})"
-                        Log.d("Cache", "Fell back to cached data due to network error")
-                    } else {
-                        // No cache available, show proper error
-                        errorMessage = "No internet connection and no cached data available. Please check your connection and try again."
-                        showRefreshButton = true
-                    }
-                } finally {
-                    isLoading = false
-                }
-            }
-        }
-
-        // Effect for handling refresh
-        LaunchedEffect(isLoading) {
-            if (isLoading && !showRefreshButton) { // This indicates a refresh was triggered
-                try {
-                    val fetchedProblems = fetchLeetCodeProblems()
-                    val savedSlugs = getSavedProblems(context).toMutableSet()
-                    val newProblems = fetchedProblems.filterNot { savedSlugs.contains(it.stat.question__title_slug) }
-
-                    if (newProblems.isNotEmpty()) {
-                        val newSlugs = newProblems.mapNotNull { it.stat.question__title_slug }
-                        savedSlugs.addAll(newSlugs)
-                        saveProblems(context, savedSlugs)
-                    }
-
-                    val enhancedProblems = matchProblemsWithArrays(fetchedProblems)
-                    problems = enhancedProblems
-                    saveEnhancedProblemsToCache(context, enhancedProblems)
-                    updateProblemsCache(context, enhancedProblems)
-                    isUsingCachedData = false
-                    showRefreshButton = true
-                    errorMessage = null
-
-                } catch (e: Exception) {
-                    errorMessage = "Failed to refresh problems: ${e.message}"
-                    // Try to reload cached data if refresh fails
-                    val cachedProblems = getCachedEnhancedProblems(context)
-                    if (cachedProblems.isNotEmpty()) {
-                        problems = cachedProblems
-                        isUsingCachedData = true
-                        errorMessage = "Refresh failed. Using cached data: ${e.message}"
-                    }
-                } finally {
-                    isLoading = false
-                }
-            }
-        }
-
-        // Fetch categories for problems when they are loaded
-        LaunchedEffect(problems) {
-            if (problems.isNotEmpty()) {
-                val loadingMap = problems.associate { problem ->
-                    problem.stat.question__title_slug!! to ProblemCategory(isLoading = true)
-                }
-                categoryMap = loadingMap
-
-                val semaphore = Semaphore(5)
-                coroutineScope {
-                    problems.mapNotNull { problem ->
-                        problem.stat.question__title_slug?.let { slug ->
-                            async {
-                                semaphore.withPermit {
-                                    try {
-                                        val category = fetchProblemCategory(slug)
-                                        categoryMap = categoryMap + (slug to category)
-                                    } catch (e: Exception) {
-                                        categoryMap = categoryMap + (slug to ProblemCategory(error = e.message))
-                                    }
-                                }
-                            }
-                        }
-                    }.awaitAll()
-                }
-            }
-        }
-
-        // Load checked map
-        LaunchedEffect(Unit) {
-            checkedMap = getCheckedMap(context)
-        }
-
-        // Show detail screen if a problem is selected
-        if (selectedProblem != null) {
-            ProblemDetailScreen(
-                slug = selectedProblem!!.stat.question__title_slug ?: "",
-                url = "https://leetcode.com/problems/${selectedProblem!!.stat.question__title_slug}/",
-                onBackClick = { selectedProblem = null }
-            )
-            return@Surface
-        }
-
-        // Show main screen
+        // Main UI
         Column(modifier = Modifier.fillMaxSize()) {
             when {
                 isLoading -> {
@@ -1590,69 +1565,52 @@ fun LeetCodeScreen(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp)
+                        ) {
                             CircularProgressIndicator()
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("3700+ problems are loading plus getting organised according to the uploaded dsa sheets")
                             Text(
-                                text = "Please wait i beg...",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                text = loadingProgress.ifEmpty { "Loading problems..." },
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
                             )
-                        }
-                    }
-                }
-
-                errorMessage != null -> {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = errorMessage!!,
-                                color = MaterialTheme.colorScheme.error,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                            Text(
-                                text = "Check your internet connection and try again",
-                                style = MaterialTheme.typography.bodySmall,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.padding(16.dp)
-                            )
-                            if (showRefreshButton) {
-                                Button(
-                                    onClick = refreshData,
-                                    enabled = !isRefreshing,
-                                    modifier = Modifier.padding(end = 8.dp)
-                                ) {
-                                    if (isRefreshing) {
-                                        CircularProgressIndicator(
-                                            modifier = Modifier.size(16.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                    } else {
-                                        Text("Refresh")
-                                    }
-                                }
+                            if (problems.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "${problems.size} problems loaded",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
                 }
 
-                problems.isEmpty() -> {
+                errorMessage != null && problems.isEmpty() -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text("No problems found")
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.padding(32.dp)
+                        ) {
+                            Text(
+                                text = errorMessage!!,
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
                             Button(
-                                onClick = refreshData,
-                                modifier = Modifier.padding(top = 16.dp)
+                                onClick = {
+                                    coroutineScope.launch {
+                                        loadData()
+                                    }
+                                }
                             ) {
-                                Text("Load Problems")
+                                Text("Retry")
                             }
                         }
                     }
@@ -1665,205 +1623,47 @@ fun LeetCodeScreen(
                             .padding(16.dp)
                     ) {
                         item {
-                            Column {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        val matchedCount = problems.count { it.priority > 0 }
-                                        Text(
-                                            text = "LeetCode Problems (${problems.size})",
-                                            style = MaterialTheme.typography.headlineMedium,
-                                            modifier = Modifier.padding(bottom = 8.dp)
-                                        )
-                                        Text(
-                                            text = "Matched with arrays: $matchedCount",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(bottom = 8.dp)
-                                        )
-
-                                        if (isUsingCachedData) {
-                                            Text(
-                                                text = "Using cached data • Tap refresh for latest",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.secondary,
-                                                modifier = Modifier.padding(bottom = 8.dp)
-                                            )
-                                        } else {
-                                            Text(
-                                                text = "Live data",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color.Green,
-                                                modifier = Modifier.padding(bottom = 8.dp)
-                                            )
-                                        }
+                            ProblemsHeader(
+                                problemsCount = problems.size,
+                                matchedCount = problems.count { it.priority > 0 },
+                                isUsingCachedData = isUsingCachedData,
+                                errorMessage = errorMessage,
+                                showRefreshButton = showRefreshButton,
+                                onRefresh = {
+                                    coroutineScope.launch {
+                                        clearCache(context)
+                                        loadData()
                                     }
-
-                                    Row {
-                                        if (showRefreshButton) {
-                                            Button(
-                                                onClick = refreshData,
-                                                colors = ButtonDefaults.buttonColors(
-                                                    containerColor = MaterialTheme.colorScheme.onBackground
-                                                ),
-                                                modifier = Modifier.padding(end = 8.dp)
-                                            ) {
-                                                Text("Refresh")
-                                            }
-                                        }
-                                        LeetCodeNotificationButton(problems)
-                                    }
-                                }
-                            }
+                                },
+                                problems = problems,
+                                coroutineScope = coroutineScope
+                            )
                         }
 
-                        items(problems) { problem ->
-                            val slug = problem.stat.question__title_slug ?: ""
-                            val categoryInfo = categoryMap[slug] ?: ProblemCategory()
+                        items(
+                            items = problems,
+                            key = { it.stat.frontend_question_id }
+                        ) { problem ->
+                            ProblemCard(
+                                problem = problem,
+                                isChecked = checkedMap[problem.stat.question__title_slug] == true,
+                                onCheckedChange = { isChecked ->
+                                    val updated = checkedMap.toMutableMap()
+                                    updated[problem.stat.question__title_slug ?: ""] = isChecked
+                                    checkedMap = updated
 
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 4.dp)
-                                    .clickable {
-                                        selectedProblem = problem
-                                    },
-                                shape = MaterialTheme.shapes.medium,
-                                elevation = CardDefaults.cardElevation(4.dp),
-                                colors = if (problem.priority > 0) {
-                                    CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                                    coroutineScope.launch(Dispatchers.IO) {
+                                        saveCheckedMap(context, updated)
+                                    }
+                                },
+                                onClick = {
+                                    // Use the callback instead of setting selectedProblem
+                                    onProblemClick(
+                                        problem.stat.question__title_slug ?: "",
+                                        "https://leetcode.com/problems/${problem.stat.question__title_slug}/"
                                     )
-                                } else {
-                                    CardDefaults.cardColors()
                                 }
-                            ) {
-                                Column(Modifier.padding(16.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Checkbox(
-                                            checked = checkedMap[slug] == true,
-                                            onCheckedChange = { isChecked ->
-                                                val updated = checkedMap.toMutableMap()
-                                                updated[slug] = isChecked
-                                                checkedMap = updated
-                                                saveCheckedMap(context, updated)
-                                            }
-                                        )
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = "${problem.stat.frontend_question_id}. ${problem.stat.question__title}",
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-
-                                            when {
-                                                categoryInfo.isLoading -> {
-                                                    Text(
-                                                        text = "Loading category...",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                                categoryInfo.error != null -> {
-                                                    Text(
-                                                        text = "Category: Unable to load",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.error
-                                                    )
-                                                }
-                                                categoryInfo.categoryTitle != "N/A" -> {
-                                                    Text(
-                                                        text = "Category: ${categoryInfo.categoryTitle}",
-                                                        style = MaterialTheme.typography.bodySmall,
-                                                        color = MaterialTheme.colorScheme.secondary,
-                                                        modifier = Modifier.padding(vertical = 2.dp)
-                                                    )
-                                                }
-                                            }
-
-                                            if (problem.priority > 0) {
-                                                Text(
-                                                    text = "Priority ${problem.priority} • ${String.format("%.1f", problem.matchPercentage)}% match",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                            }
-                                        }
-
-                                        Row {
-                                            if (problem.priority > 0) {
-                                                Text(
-                                                    text = "⭐",
-                                                    style = MaterialTheme.typography.bodyLarge
-                                                )
-                                            }
-                                            if (problem.paid_only) {
-                                                Text(
-                                                    text = "🔒",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "Difficulty: ${when (problem.difficulty.level) {
-                                                1 -> "Easy"
-                                                2 -> "Medium"
-                                                3 -> "Hard"
-                                                else -> "Unknown"
-                                            }}",
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            color = when (problem.difficulty.level) {
-                                                1 -> Color.Green
-                                                2 -> Color(0xFFFF9800)
-                                                3 -> Color.Red
-                                                else -> MaterialTheme.colorScheme.onSurface
-                                            }
-                                        )
-
-                                        Text(
-                                            text = "AC: ${problem.stat.total_acs}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        if (problem.paid_only) {
-                                            Text(
-                                                text = "Premium Only",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFFFFD700)
-                                            )
-                                        }
-
-                                        if (problem.stat.is_new_question) {
-                                            Text(
-                                                text = "New Problem",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = Color(0xFF4CAF50)
-                                            )
-                                        }
-                                    }
-                                }
-                            }
+                            )
                         }
                     }
                 }
@@ -1871,7 +1671,141 @@ fun LeetCodeScreen(
         }
     }
 }
+
+// 5. Extract header to separate composable
+@Composable
+fun ProblemsHeader(
+    problemsCount: Int,
+    matchedCount: Int,
+    isUsingCachedData: Boolean,
+    errorMessage: String?,
+    showRefreshButton: Boolean,
+    onRefresh: () -> Unit,
+    problems: List<EnhancedProblemStat>,
+    coroutineScope: kotlinx.coroutines.CoroutineScope
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "$problemsCount Questions",
+                    style = MaterialTheme.typography.headlineMedium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                Text(
+                    text = "Question matched with sheet: $matchedCount",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                if (isUsingCachedData) {
+                    Text(
+                        text = "Using cached data",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary
+                    )
+                }
+
+                if (errorMessage != null && problemsCount > 0) {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+
+            Row {
+                if (showRefreshButton) {
+                    Button(
+                        onClick = onRefresh,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("Refresh")
+                    }
+                }
+                LeetCodeNotificationButton(problems)
+            }
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
+
+// 6. Extract problem card to separate composable
+@Composable
+fun ProblemCard(
+    problem: EnhancedProblemStat,
+    isChecked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        colors = if (problem.priority > 0) {
+            CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            )
+        } else {
+            CardDefaults.cardColors()
+        }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Checkbox(
+                checked = isChecked,
+                onCheckedChange = onCheckedChange
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${problem.stat.frontend_question_id}. ${problem.stat.question__title}",
+                    style = MaterialTheme.typography.titleMedium
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = when (problem.difficulty.level) {
+                            1 -> "Easy"
+                            2 -> "Medium"
+                            3 -> "Hard"
+                            else -> "Unknown"
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = when (problem.difficulty.level) {
+                            1 -> Color.Green
+                            2 -> Color(0xFFFF9800)
+                            3 -> Color.Red
+                            else -> MaterialTheme.colorScheme.onSurface
+                        }
+                    )
+
+                    if (problem.priority > 0) {
+                        Text(
+                            text = "⭐ P${problem.priority}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
 suspend fun fetchLeetCodeProblems(): List<ProblemStat> = withContext(Dispatchers.IO) {
+    // Your existing implementation, but ensure it's properly on IO dispatcher
     val problems = mutableListOf<ProblemStat>()
 
     try {
@@ -1882,12 +1816,10 @@ suspend fun fetchLeetCodeProblems(): List<ProblemStat> = withContext(Dispatchers
 
         connection.apply {
             requestMethod = "GET"
-            connectTimeout = 10000
-            readTimeout = 10000
-            setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+            connectTimeout = 15000  // Increased timeout
+            readTimeout = 15000
+            setRequestProperty("User-Agent", "Mozilla/5.0")
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("Accept-Language", "en-US,en;q=0.9")
-            setRequestProperty("Cache-Control", "no-cache")
         }
 
         val responseCode = connection.responseCode
@@ -1895,40 +1827,24 @@ suspend fun fetchLeetCodeProblems(): List<ProblemStat> = withContext(Dispatchers
 
         if (responseCode == HttpURLConnection.HTTP_OK) {
             val response = connection.inputStream.bufferedReader().use { it.readText() }
-            Log.d("FetchProblems", "Response received, length: ${response.length}")
 
-            try {
-                val json = Json {
-                    ignoreUnknownKeys = true
-                    isLenient = true
-                }
-
-                val leetCodeResponse = json.decodeFromString<LeetCodeResponse>(response)
-                Log.d("FetchProblems", "JSON parsed successfully. Found ${leetCodeResponse.stat_status_pairs.size} problems")
-
-                val filteredProblems = leetCodeResponse.stat_status_pairs.take(4000)
-                problems.addAll(filteredProblems)
-                Log.d("FetchProblems", "Added ${filteredProblems.size} problems after filtering")
-
-            } catch (jsonException: Exception) {
-                Log.e("FetchProblems", "JSON parsing failed", jsonException)
-                throw Exception("Failed to parse LeetCode response: ${jsonException.message}")
+            val json = Json {
+                ignoreUnknownKeys = true
+                isLenient = true
             }
 
+            val leetCodeResponse = json.decodeFromString<LeetCodeResponse>(response)
+            problems.addAll(leetCodeResponse.stat_status_pairs)
+
+            Log.d("FetchProblems", "Successfully fetched ${problems.size} problems")
         } else {
-            val errorResponse = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: "Unknown error"
-            Log.e("FetchProblems", "HTTP error $responseCode: $errorResponse")
             throw Exception("HTTP $responseCode: Failed to fetch from LeetCode API")
         }
 
-        connection.disconnect()
-
     } catch (e: Exception) {
         Log.e("FetchProblems", "Network request failed", e)
-        throw Exception("Network error: ${e.message}")
+        throw e
     }
 
-    Log.d("FetchProblems", "Returning ${problems.size} problems")
     return@withContext problems
 }
-

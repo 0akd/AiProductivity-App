@@ -71,12 +71,12 @@ import android.content.pm.PackageManager
 import android.os.Build
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
-
-
-
 import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import io.ktor.http.ContentType
@@ -125,7 +125,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
 
     // Add this helper function to handle boot rescheduling for LeetCode notifications
     private fun handleLeetCodeBootRescheduling(problems: List<EnhancedProblemStat>) {
-        val prefs = getSharedPreferences("leetcode_notifications", Context.MODE_PRIVATE)
+        val prefs = getSharedPreferences("leetcode_notifications", MODE_PRIVATE)
         val needsReschedule = prefs.getBoolean("needs_reschedule_after_boot", false)
 
         if (needsReschedule && problems.isNotEmpty()) {
@@ -153,7 +153,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
             // Add handling for exact alarm permission (Android 12+)
             2 -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                    val alarmManager = getSystemService(ALARM_SERVICE) as? AlarmManager
                     if (alarmManager?.canScheduleExactAlarms() == false) {
                         Toast.makeText(this, "Exact alarm permission is required for precise notifications", Toast.LENGTH_LONG).show()
                     }
@@ -179,7 +179,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
 
         // Also request exact alarm permission for Android 12+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+            val alarmManager = getSystemService(ALARM_SERVICE) as? AlarmManager
             if (alarmManager?.canScheduleExactAlarms() == false) {
                 try {
                     val intent = Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
@@ -219,7 +219,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
 
         setContent {
             val context = LocalContext.current
-            val prefs = context.getSharedPreferences("theme_prefs", Context.MODE_PRIVATE)
+            val prefs = context.getSharedPreferences("theme_prefs", MODE_PRIVATE)
             var isDarkTheme by remember { mutableStateOf(prefs.getBoolean("is_dark", true)) }
 
             var isPremium by remember { mutableStateOf(false) }
@@ -418,16 +418,42 @@ fun MainScreen(
     val scope = rememberCoroutineScope()
     var showTextFileScreen by remember { mutableStateOf(false) }
     var textFileParams by remember { mutableStateOf<TextFileScreenParams?>(null) }
-
-    // Add state to remember the file system navigation path
     var fileSystemNavigationPath by remember { mutableStateOf<List<String>>(emptyList()) }
+    var currentScreen by remember { mutableStateOf("Problems") }
 
-    // Add navigation state for TextFileScreen
+    // Viewer states
+    var showYoutubePlayer by rememberSaveable { mutableStateOf(false) }
+    var showPdfViewer by rememberSaveable { mutableStateOf(false) }
+    var selectedYoutubeUrl by rememberSaveable { mutableStateOf("") }
+    var selectedPdfUrl by rememberSaveable { mutableStateOf("") }
+    var selectedPdfTitle by rememberSaveable { mutableStateOf("") }
 
+    // NEW: Problem detail and search states
+    var showProblemDetail by remember { mutableStateOf(false) }
+    var selectedProblemSlug by remember { mutableStateOf("") }
+    var selectedProblemUrl by remember { mutableStateOf("") }
+    var showProblemSearch by remember { mutableStateOf(false) }
+    var problemSearchQuery by remember { mutableStateOf("") }
 
-    var currentScreen by remember { mutableStateOf("Problems") } // default
+    // Search states
+    var youtubeSearchQuery by remember { mutableStateOf("") }
+    var youtubeResults by remember { mutableStateOf(emptyList<SearchResult>()) }
+    var youtubeIsLoading by remember { mutableStateOf(false) }
+    var youtubeErrorMessage by remember { mutableStateOf<String?>(null) }
+    var pdfSearchQuery by remember { mutableStateOf("") }
+    var pdfResults by remember { mutableStateOf(emptyList<SearchResult>()) }
+    var pdfIsLoading by remember { mutableStateOf(false) }
+    var pdfErrorMessage by remember { mutableStateOf<String?>(null) }
 
-    // ... your existing LaunchedEffects remain the same ...
+    // NEW: Problem search specific states
+    var problemYoutubeResults by remember { mutableStateOf(emptyList<SearchResult>()) }
+    var problemYoutubeIsLoading by remember { mutableStateOf(false) }
+    var problemYoutubeErrorMessage by remember { mutableStateOf<String?>(null) }
+    var problemWebResults by remember { mutableStateOf(emptyList<SearchResult>()) }
+    var problemWebIsLoading by remember { mutableStateOf(false) }
+    var problemWebErrorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Existing LaunchedEffects
     LaunchedEffect(notificationProblemSlug) {
         if (notificationProblemSlug != null) {
             currentScreen = "Problems"
@@ -470,7 +496,42 @@ fun MainScreen(
         scope.launch { drawerState.close() }
     }
 
-    // Handle TextFileScreen display
+    // Handle back button logic
+    fun handleBackPress() {
+        when {
+            showTextFileScreen -> {
+                showTextFileScreen = false
+                textFileParams = null
+            }
+            showYoutubePlayer && showProblemSearch -> {
+                // Coming back from YouTube in problem search
+                showYoutubePlayer = false
+            }
+            showProblemSearch -> {
+                // Coming back from problem search to problem detail
+                showProblemSearch = false
+                problemSearchQuery = ""
+                problemYoutubeResults = emptyList()
+                problemWebResults = emptyList()
+            }
+            showProblemDetail -> {
+                // Coming back from problem detail to DSA list
+                showProblemDetail = false
+                selectedProblemSlug = ""
+                selectedProblemUrl = ""
+            }
+            showYoutubePlayer -> showYoutubePlayer = false
+            showPdfViewer -> showPdfViewer = false
+            else -> {
+                // Default back behavior if needed
+            }
+        }
+    }
+
+    // Determine if back button should be shown
+    val shouldShowBackButton = showTextFileScreen || showYoutubePlayer ||
+            showPdfViewer || showProblemDetail || showProblemSearch
+
     // Handle TextFileScreen display
     if (showTextFileScreen && textFileParams != null) {
         TextFileScreen(
@@ -483,16 +544,14 @@ fun MainScreen(
                 textFileParams = null
             },
             onNavigateToFileSystem = { pathSegments ->
-                // Enhanced back navigation - return to FileSystemScreen with the specific path
                 showTextFileScreen = false
                 textFileParams = null
-                // Set the navigation path so FileSystemScreen opens at the correct location
                 fileSystemNavigationPath = pathSegments
                 currentScreen = "Mission"
                 ScreenPrefs.saveScreen(context, "Mission")
             }
         )
-        return // Early return to show TextFileScreen
+        return
     }
 
     ModalNavigationDrawer(
@@ -504,7 +563,6 @@ fun MainScreen(
                         .fillMaxSize()
                         .verticalScroll(rememberScrollState())
                 ) {
-                    // Cross button to close the drawer
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -532,9 +590,16 @@ fun MainScreen(
                     val screens = if (isPremium) {
                         listOf("Home", "Tasks","Login/Signup")
                     } else {
-                        listOf( "pdf","Resume","Problems","Hackathons","Internships","Jobs","Research","Login/Signup" )
+                        listOf(
+                            "Resume",
+                            "DSA Problems",
+                            "Search Engine",
+                            "Hackathons",
+                            "Jobs",
+                            "Internships",
+                            "Login/Signup"
+                        )
                     }
-
                     screens.forEach { screen ->
                         DrawerButton(screen) {
                             changeScreen(screen)
@@ -545,19 +610,43 @@ fun MainScreen(
         }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top App Bar
+            // Top App Bar with unified back button
             val screenTitles = mapOf(
                 "Hackathons" to "Hackathons",
                 "Internships" to "Internships",
                 "Login/Signup" to "Login/Signup",
                 "Home" to "Welcome Home",
-                "Problems" to "LeetCode Problems",
+                "DSA Problems" to "DSA Problems",
                 "Resume" to "Resume",
                 "Research" to "Know",
+                "Jobs" to "Find Jobs",
+                "Search Engine" to "Resource Extracter"
             )
 
+            // Determine title based on what's showing
+            val displayTitle = when {
+                showProblemSearch && showYoutubePlayer -> "YouTube Solution"
+                showProblemSearch -> "Problem Solutions"
+                showProblemDetail -> "Problem Details"
+                showYoutubePlayer -> "YouTube Player"
+                showPdfViewer -> selectedPdfTitle.ifEmpty { "PDF Viewer" }
+                else -> screenTitles[currentScreen] ?: "deArKs"
+            }
+
             TopAppBar(
-                title = { Text(screenTitles[currentScreen] ?: "TheONE") },
+                title = { Text(displayTitle) },
+                navigationIcon = {
+                    // Show back button when viewer is active
+                    if (shouldShowBackButton) {
+                        IconButton(onClick = { handleBackPress() }) {
+                            Icon(
+                                imageVector = Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                },
                 actions = {
                     val themeToggle = LocalThemeToggle.current
                     IconButton(
@@ -587,7 +676,6 @@ fun MainScreen(
                 )
             )
 
-            // Screen content below
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -603,12 +691,108 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
-                    "pdf"->PdfViewerScreen()
+                    "Search Engine" -> {
+                        when {
+                            showYoutubePlayer -> {
+                                YouTubeFullscreenScreen(
+                                    videoUrl = selectedYoutubeUrl
+                                )
+                            }
+                            showPdfViewer -> {
+                                PdfViewerScreen(
+                                    pdfUrl = selectedPdfUrl
+                                )
+                            }
+                            else -> {
+                                DualSearchScreen(
+                                    youtubeSearchQuery = youtubeSearchQuery,
+                                    onYoutubeSearchQueryChange = { youtubeSearchQuery = it },
+                                    youtubeResults = youtubeResults,
+                                    onYoutubeResultsChange = { youtubeResults = it },
+                                    youtubeIsLoading = youtubeIsLoading,
+                                    onYoutubeLoadingChange = { youtubeIsLoading = it },
+                                    youtubeErrorMessage = youtubeErrorMessage,
+                                    onYoutubeErrorMessageChange = { youtubeErrorMessage = it },
+                                    onYoutubeClick = { url ->
+                                        selectedYoutubeUrl = url
+                                        showYoutubePlayer = true
+                                    },
+                                    pdfSearchQuery = pdfSearchQuery,
+                                    onPdfSearchQueryChange = { pdfSearchQuery = it },
+                                    pdfResults = pdfResults,
+                                    onPdfResultsChange = { pdfResults = it },
+                                    pdfIsLoading = pdfIsLoading,
+                                    onPdfLoadingChange = { pdfIsLoading = it },
+                                    pdfErrorMessage = pdfErrorMessage,
+                                    onPdfErrorMessageChange = { pdfErrorMessage = it },
+                                    onPdfClick = { url, title ->
+                                        selectedPdfUrl = url
+                                        selectedPdfTitle = title
+                                        showPdfViewer = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    "DSA Problems" -> {
+                        when {
+                            // Show YouTube player for problem search
+                            showProblemSearch && showYoutubePlayer -> {
+                                YouTubeFullscreenScreen(
+                                    videoUrl = selectedYoutubeUrl
+                                )
+                            }
+                            // Show problem search screen
+                            showProblemSearch -> {
+                                ProblemSearchScreen(
+                                    initialQuery = problemSearchQuery,
+                                    onBackClick = { handleBackPress() },
+                                    onYoutubeClick = { url ->
+                                        selectedYoutubeUrl = url
+                                        showYoutubePlayer = true
+                                    },
+                                    onWebResultClick = { url ->
+                                        // Open in external browser or internal webview
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        context.startActivity(intent)
+                                    }
+                                )
+                            }
+                            // Show problem detail screen
+                            showProblemDetail -> {
+                                ProblemDetailScreen(
+                                    slug = selectedProblemSlug,
+                                    url = selectedProblemUrl,
+                                    onBackClick = { handleBackPress() },
+                                    onSearchClick = { query ->
+                                        problemSearchQuery = query
+                                        showProblemSearch = true
+                                    }
+                                )
+                            }
+                            // Show LeetCode list screen
+                            else -> {
+                                LeetCodeScreen(
+                                    notificationProblemSlug = notificationProblemSlug,
+                                    onNotificationHandled = onNotificationHandled,
+                                    onProblemClick = { slug, url ->
+                                        selectedProblemSlug = slug
+                                        selectedProblemUrl = url
+                                        showProblemDetail = true
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    "Video" -> YouTubeFullscreenScreen(videoUrl = "https://youtu.be/gKRSIpPMTew?si=1uASzopqv3BfEDjL")
+
                     "Home" -> HomeScreen()
-                    "Music"->MP3PlayerScreen()
-                    "Internships"-> ScraperJobScreen()
+                    "Music" -> MP3PlayerScreen()
+                    "Internships" -> ScraperJobScreen()
                     "Tasks" -> CardListManager()
-                    "Jobs"->JobSearchScreen()
+                    "Jobs" -> JobSearchScreen()
                     "Hackathons" -> ScraperScreen()
                     "Resume" -> ResumeBuilderApp()
                     "Login/Signup" -> Box(
@@ -622,17 +806,11 @@ fun MainScreen(
                             }
                         )
                     }
-                    "Problems" -> LeetCodeScreen(
-                        notificationProblemSlug = notificationProblemSlug,
-                        onNotificationHandled = onNotificationHandled
-                    )
-
                     "admin" -> AdminScreen()
                     "course" -> CardDisplayScreen()
                     "Ex" -> ExerciseTimerScreen()
-                    "Steps"-> TileScreen()
+                    "Steps" -> TileScreen()
                     "Mission" -> FileSystemScreen(
-                        // ✅ Enhanced navigation callback with path preservation
                         navigationCallback = object : FileNavigationCallback {
                             override fun navigateToTextFile(
                                 courseName: String,
@@ -647,7 +825,6 @@ fun MainScreen(
                                     fileName = fileName
                                 )
                                 showTextFileScreen = true
-                                // Store the current path for back navigation
                                 fileSystemNavigationPath = listOf(courseName, subjectName, chapterName)
                                     .filter { it != "default_course" && it != "default_subject" && it != "default_chapter" }
                             }
@@ -657,9 +834,8 @@ fun MainScreen(
                                 ScreenPrefs.saveScreen(context, "Home")
                             }
                         },
-                        initialPath = fileSystemNavigationPath // Pass the initial path
+                        initialPath = fileSystemNavigationPath
                     )
-
                     "Research" -> SearchLauncherScreen()
                 }
             }

@@ -35,8 +35,8 @@ fun HomeScreen() {
 
             // Paragraph 1
             Text(
-                text = "Swiping right ->->--->-->> opens drawer from where you can navigate. "
-                        + "Or you can just click on the top right button.",
+                text = "Just click on the top right three dashed button to open navigation drawer "
+                        + "",
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
@@ -49,7 +49,7 @@ fun HomeScreen() {
 
             // Paragraph 3
             Text(
-                text = "A Digital Product - delivered by Arjun Dubey",
+                text = "drag your fingers towards right in fast pace will also open the navigation drawer",
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
