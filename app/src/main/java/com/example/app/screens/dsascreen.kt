@@ -145,43 +145,27 @@ fun ProblemSearchScreen(
     }
 
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Search Results") },
-                navigationIcon = {
-                    IconButton(onClick = onBackClick) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = "Back"
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            )
-        }
+
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+
         ) {
             // Search Area
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+               ,
                 colors = CardDefaults.cardColors(
                     containerColor = MaterialTheme.colorScheme.surfaceVariant
                 )
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+
                 ) {
                     Text(
-                        text = "Search for Solutions",
+                        text = "Fetching Solutions",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
@@ -262,7 +246,7 @@ fun ProblemSearchScreen(
                         .padding(8.dp)
                 ) {
                     ResulltsColumn(
-                        title = "Web Results",
+                        title = "Textual Solutions",
                         results = webResults,
                         isLoading = webIsLoading,
                         errorMessage = webErrorMessage,

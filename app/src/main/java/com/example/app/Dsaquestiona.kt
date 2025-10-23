@@ -90,7 +90,7 @@ fun parseJsonResponse(jsonString: String): ProblemData? {
 fun ProblemDetailScreen(
     slug: String,
     url: String,
-    onBackClick: () -> Unit,
+
     onSearchClick: (String) -> Unit // New callback for search
 ) {
     var problemData by remember { mutableStateOf<ProblemData?>(null) }
@@ -130,11 +130,16 @@ fun ProblemDetailScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background) // Add this line
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(16.dp)
+                .background(MaterialTheme.colorScheme.background)
         ) {
             // Back button and title
             Row(
@@ -142,21 +147,17 @@ fun ProblemDetailScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = onBackClick) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowBack,
-                        contentDescription = "Back"
-                    )
-                }
+
 
                 Text(
                     text = problemData?.title ?: "Problem: $slug",
                     style = MaterialTheme.typography.headlineSmall,
                     modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
+                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary // Change text color
                 )
 
-                Spacer(modifier = Modifier.width(48.dp))
+
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -166,7 +167,8 @@ fun ProblemDetailScreen(
                 isLoading -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
+                        contentAlignment = Alignment.Center,
+
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator()

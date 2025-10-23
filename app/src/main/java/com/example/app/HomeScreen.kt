@@ -49,11 +49,11 @@ fun HomeScreen() {
 
             // Paragraph 3
             Text(
-                text = "drag your fingers towards right in fast pace will also open the navigation drawer",
+                text = "drag your fingers towards right over the screen in fast pace will also open the navigation drawer",
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 textAlign = TextAlign.Justify,
-                color = MaterialTheme.colorScheme.primary // Optional: Give it an accent color
+                color = MaterialTheme.colorScheme.onBackground // 🔁 use themed text color
             )
         }
     }

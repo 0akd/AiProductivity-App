@@ -547,8 +547,8 @@ fun MainScreen(
                 showTextFileScreen = false
                 textFileParams = null
                 fileSystemNavigationPath = pathSegments
-                currentScreen = "Mission"
-                ScreenPrefs.saveScreen(context, "Mission")
+                currentScreen = "Courses"
+                ScreenPrefs.saveScreen(context, "Courses")
             }
         )
         return
@@ -591,13 +591,16 @@ fun MainScreen(
                         listOf("Home", "Tasks","Login/Signup")
                     } else {
                         listOf(
+
                             "Resume",
                             "DSA Problems",
                             "Search Engine",
                             "Hackathons",
                             "Jobs",
                             "Internships",
-                            "Login/Signup"
+                            "Courses",
+                            "Login/Signup",
+
                         )
                     }
                     screens.forEach { screen ->
@@ -613,6 +616,7 @@ fun MainScreen(
             // Top App Bar with unified back button
             val screenTitles = mapOf(
                 "Hackathons" to "Hackathons",
+                "Courses" to "Content",
                 "Internships" to "Internships",
                 "Login/Signup" to "Login/Signup",
                 "Home" to "Welcome Home",
@@ -668,7 +672,7 @@ fun MainScreen(
                     }
                 },
                 modifier = Modifier
-                    .height(70.dp)
+                    .height(100.dp)
                     .zIndex(999f),
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.background,
@@ -764,7 +768,7 @@ fun MainScreen(
                                 ProblemDetailScreen(
                                     slug = selectedProblemSlug,
                                     url = selectedProblemUrl,
-                                    onBackClick = { handleBackPress() },
+
                                     onSearchClick = { query ->
                                         problemSearchQuery = query
                                         showProblemSearch = true
@@ -810,7 +814,7 @@ fun MainScreen(
                     "course" -> CardDisplayScreen()
                     "Ex" -> ExerciseTimerScreen()
                     "Steps" -> TileScreen()
-                    "Mission" -> FileSystemScreen(
+                    "Courses" -> FileSystemScreen(
                         navigationCallback = object : FileNavigationCallback {
                             override fun navigateToTextFile(
                                 courseName: String,
