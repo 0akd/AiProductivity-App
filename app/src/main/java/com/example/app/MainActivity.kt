@@ -591,7 +591,7 @@ fun MainScreen(
                         listOf("Home", "Tasks","Login/Signup")
                     } else {
                         listOf(
-
+"yt","ex",
                             "Resume",
                             "DSA Problems",
                             "Search Engine",
@@ -695,6 +695,8 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
+                    "yt"-> YoutubeFrameExtractorScreen()
+                    "ex"->VideoFrameExtractorScreen()
                     "Search Engine" -> {
                         when {
                             showYoutubePlayer -> {
