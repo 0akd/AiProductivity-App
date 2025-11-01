@@ -696,7 +696,7 @@ fun MainScreen(
             ) {
                 when (currentScreen) {
                     "yt"-> YoutubeFrameExtractorScreen()
-                    "ex"->VideoFrameExtractorScreen()
+                    "ex"->YouTubeDownloaderScreen()
                     "Search Engine" -> {
                         when {
                             showYoutubePlayer -> {

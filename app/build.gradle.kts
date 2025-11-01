@@ -6,7 +6,7 @@ plugins {
     id("com.google.gms.google-services")
 
 }
-
+val youtubedlAndroid = "0.18.0"
 android {
     namespace = "com.arjundubey.app"
     compileSdk = 36
@@ -67,6 +67,8 @@ dependencies {
     implementation("io.github.farimarwat:youtubedl-boom:1.0.22")
     implementation("io.github.farimarwat:youtubedl-boom-commons:1.2")
     // Compose UI
+    implementation("io.github.junkfood02.youtubedl-android:library:${youtubedlAndroid}")
+    implementation("io.github.junkfood02.youtubedl-android:ffmpeg:${youtubedlAndroid}")
     implementation(libs.bundles.compose)
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.material.icons.extended)
@@ -94,7 +96,7 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.1")
     implementation("androidx.activity:activity-compose:1.7.2")
-
+    implementation("io.github.maitrungduc1410:ffmpeg-kit-min:6.0.1")
     implementation("androidx.compose.material3:material3:1.1.1")
     implementation("androidx.compose.ui:ui-tooling-preview:1.5.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
