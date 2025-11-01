@@ -210,7 +210,7 @@ class MainActivity : ComponentActivity(), PaymentResultListener {
         Checkout.preload(applicationContext)
         WindowCompat.setDecorFitsSystemWindows(window, false)
         createNotificationChannel(this)
-        createNotificationChanne(this)
+//        createNotificationChanne(this)
 
         // Create LeetCode notification channel
         createLeetCodeNotificationChannel(this)
@@ -591,7 +591,7 @@ fun MainScreen(
                         listOf("Home", "Tasks","Login/Signup")
                     } else {
                         listOf(
-"yt","ex",
+"ex","Music",
                             "Resume",
                             "DSA Problems",
                             "Search Engine",
@@ -695,7 +695,7 @@ fun MainScreen(
                     }
             ) {
                 when (currentScreen) {
-                    "yt"-> YoutubeFrameExtractorScreen()
+
                     "ex"->YouTubeDownloaderScreen()
                     "Search Engine" -> {
                         when {
@@ -814,7 +814,7 @@ fun MainScreen(
                     }
                     "admin" -> AdminScreen()
                     "course" -> CardDisplayScreen()
-                    "Ex" -> ExerciseTimerScreen()
+//                    "Ex" -> ExerciseTimerScreen()
                     "Steps" -> TileScreen()
                     "Courses" -> FileSystemScreen(
                         navigationCallback = object : FileNavigationCallback {

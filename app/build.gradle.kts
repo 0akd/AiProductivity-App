@@ -64,8 +64,7 @@ dependencies {
     implementation("com.google.firebase:firebase-analytics")
     // Compose BOM - manages all compose library versions
     implementation(platform(libs.androidx.compose.bom))
-    implementation("io.github.farimarwat:youtubedl-boom:1.0.22")
-    implementation("io.github.farimarwat:youtubedl-boom-commons:1.2")
+
     // Compose UI
     implementation("io.github.junkfood02.youtubedl-android:library:${youtubedlAndroid}")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:${youtubedlAndroid}")
