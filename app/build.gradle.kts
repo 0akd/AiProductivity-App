@@ -127,6 +127,7 @@ dependencies {
     implementation("androidx.activity:activity-compose")
     implementation("androidx.navigation:navigation-compose")
     implementation(libs.androidx.ui)
+    implementation(libs.androidx.foundation)
 
     // Testing
     testImplementation(libs.junit)

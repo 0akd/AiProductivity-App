@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.PressGestureScope
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,6 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -49,13 +57,18 @@ fun FullScreenImageViewer(
     onPrevious: () -> Unit,
     hasNext: Boolean,
     hasPrevious: Boolean,
-    frameInfo: Pair<Int, String>? = null,  // NEW: (frameNumber, videoUrl)
-    frameInterval: Int = 5  // NEW: interval used for extraction
+    frameInfo: Pair<Int, String>? = null,
+    frameInterval: Int = 5
 ) {
     val context = LocalContext.current
     var scale by remember { mutableStateOf(1f) }
     var offset by remember { mutableStateOf(Offset.Zero) }
     var bitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    // Navigation state variables
+    var isLongPressingNext by remember { mutableStateOf(false) }
+    var isLongPressingPrevious by remember { mutableStateOf(false) }
+    var navigationJob by remember { mutableStateOf<Job?>(null) }
 
     // Calculate timestamp from frame number
     val timestampSeconds = frameInfo?.let { (frameNum, _) ->
@@ -81,8 +94,44 @@ fun FullScreenImageViewer(
         }
     }
 
+    // Handle auto-navigation when long pressing
+    LaunchedEffect(isLongPressingNext, isLongPressingPrevious, hasNext, hasPrevious) {
+        // Cancel any existing navigation
+        navigationJob?.cancel()
+
+        if (isLongPressingNext && hasNext) {
+            navigationJob = startExponentialNavigation(
+                initialDelay = 500L, // Initial delay before starting
+                onNavigate = onNext,
+                isActive = { isLongPressingNext && hasNext }
+
+            )
+        } else if (isLongPressingPrevious && hasPrevious) {
+            navigationJob = startExponentialNavigation(
+                initialDelay = 500L,
+                onNavigate = onPrevious,
+
+                isActive = { isLongPressingPrevious && hasPrevious }
+            )
+        }
+    }
+
+    // Clean up when composable is disposed
+    LaunchedEffect(Unit) {
+        try {
+            awaitCancellation()
+        } finally {
+            navigationJob?.cancel()
+        }
+    }
+
     Dialog(
-        onDismissRequest = onClose,
+        onDismissRequest = {
+            // Only close if not zoomed/panned
+            if (scale == 1f && offset == Offset.Zero) {
+                onClose()
+            }
+        },
         properties = DialogProperties(
             dismissOnBackPress = true,
             dismissOnClickOutside = false,
@@ -93,7 +142,7 @@ fun FullScreenImageViewer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-
+                .background(Color.Black)
         ) {
             // Image with zoom and pan
             bitmap?.let { bmp ->
@@ -109,16 +158,28 @@ fun FullScreenImageViewer(
                             translationY = offset.y
                         )
                         .pointerInput(Unit) {
-                            detectTransformGestures { _, pan, zoom, _ ->
-                                scale = (scale * zoom).coerceIn(0.5f, 5f)
+                            detectTransformGestures { centroid, pan, zoom, rotation ->
+                                val newScale = (scale * zoom).coerceIn(0.5f, 5f) // Increased minimum scale to 0.5f
 
-                                val maxX = (size.width * (scale - 1)) / 2
-                                val maxY = (size.height * (scale - 1)) / 2
+                                if (newScale >= 0.5f) {
+                                    scale = newScale
 
-                                offset = Offset(
-                                    x = (offset.x + pan.x * scale).coerceIn(-maxX, maxX),
-                                    y = (offset.y + pan.y * scale).coerceIn(-maxY, maxY)
-                                )
+                                    // Calculate max offset based on current scale and image size
+                                    val maxOffsetX = (size.width * (scale - 1)) / 2
+                                    val maxOffsetY = (size.height * (scale - 1)) / 2
+
+                                    // Handle offset constraints properly for both zoom in and zoom out
+                                    offset = if (scale > 1f) {
+                                        // When zoomed in, allow panning within bounds
+                                        Offset(
+                                            x = (offset.x + pan.x * scale).coerceIn(-maxOffsetX, maxOffsetX),
+                                            y = (offset.y + pan.y * scale).coerceIn(-maxOffsetY, maxOffsetY)
+                                        )
+                                    } else {
+                                        // When zoomed out, reset to center or handle minimal offset
+                                        Offset.Zero
+                                    }
+                                }
                             }
                         }
                 )
@@ -134,7 +195,7 @@ fun FullScreenImageViewer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .padding(8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -143,7 +204,7 @@ fun FullScreenImageViewer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // NEW: Web link button (top-left)
+                    // Web link button (top-left)
                     if (frameInfo != null && timestampSeconds != null) {
                         IconButton(
                             onClick = {
@@ -210,7 +271,10 @@ fun FullScreenImageViewer(
                 }
             }
 
-            // Navigation buttons (unchanged)
+            // Navigation buttons with long-press support
+            // Replace the navigation buttons section with this simpler version:
+            // Navigation buttons with proper long-press release detection
+            // Navigation buttons with proper long-press release detection
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -218,42 +282,84 @@ fun FullScreenImageViewer(
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                IconButton(
-                    onClick = onPrevious,
-                    enabled = hasPrevious,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .background(
-                            if (hasPrevious) Color.Black.copy(alpha = 0.5f) else Color.Transparent,
-                            shape = MaterialTheme.shapes.medium
-                        )
-                ) {
-                    if (hasPrevious) {
+                // Previous button - FIXED VERSION
+                if (hasPrevious) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(
+                                Color.Black.copy(alpha = 0.5f),
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            .pointerInput(hasPrevious) {
+                                detectTapGestures(
+                                    onPress = { pressOffset ->
+                                        // This will wait for release OR long press
+                                        val pressResult = tryAwaitRelease()
+                                        // If we reach here, press was released
+                                        isLongPressingPrevious = false
+                                    },
+                                    onLongPress = {
+                                        // Start long press navigation
+                                        isLongPressingPrevious = true
+                                    },
+                                    onTap = {
+                                        // Single tap - navigate once
+                                        onPrevious()
+                                    }
+                                )
+                            }
+                    ) {
                         Text(
                             "◀️",
+                            modifier = Modifier.align(Alignment.Center),
                             style = MaterialTheme.typography.headlineLarge,
-                            color = Color.White
+                            color = if (isLongPressingPrevious) Color.Yellow else Color.White
                         )
                     }
+                } else {
+                    // Placeholder for spacing when no previous
+                    Box(modifier = Modifier.size(64.dp))
                 }
 
-                IconButton(
-                    onClick = onNext,
-                    enabled = hasNext,
-                    modifier = Modifier
-                        .size(64.dp)
-                        .background(
-                            if (hasNext) Color.Black.copy(alpha = 0.5f) else Color.Transparent,
-                            shape = MaterialTheme.shapes.medium
-                        )
-                ) {
-                    if (hasNext) {
+                // Next button - FIXED VERSION
+                if (hasNext) {
+                    Box(
+                        modifier = Modifier
+                            .size(64.dp)
+                            .background(
+                                Color.Black.copy(alpha = 0.5f),
+                                shape = MaterialTheme.shapes.medium
+                            )
+                            .pointerInput(hasNext) {
+                                detectTapGestures(
+                                    onPress = { pressOffset ->
+                                        // This will wait for release OR long press
+                                        val pressResult = tryAwaitRelease()
+                                        // If we reach here, press was released
+                                        isLongPressingNext = false
+                                    },
+                                    onLongPress = {
+                                        // Start long press navigation
+                                        isLongPressingNext = true
+                                    },
+                                    onTap = {
+                                        // Single tap - navigate once
+                                        onNext()
+                                    }
+                                )
+                            }
+                    ) {
                         Text(
                             "▶️",
+                            modifier = Modifier.align(Alignment.Center),
                             style = MaterialTheme.typography.headlineLarge,
-                            color = Color.White
+                            color = if (isLongPressingNext) Color.Yellow else Color.White
                         )
                     }
+                } else {
+                    // Placeholder for spacing when no next
+                    Box(modifier = Modifier.size(64.dp))
                 }
             }
 
@@ -262,7 +368,7 @@ fun FullScreenImageViewer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .background(Color.Black.copy(alpha = 0.5f))
+                    .background(Color.Black.copy(alpha = 0.7f))
                     .padding(12.dp)
             ) {
                 Text(
@@ -275,7 +381,64 @@ fun FullScreenImageViewer(
                     color = Color.White.copy(alpha = 0.7f),
                     style = MaterialTheme.typography.bodySmall
                 )
+
+                // Show auto-navigation indicator
+                if (isLongPressingNext || isLongPressingPrevious) {
+                    Text(
+                        text = "Auto-navigation: ${if (isLongPressingNext) "Next" else "Previous"}",
+                        color = Color.Yellow,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
+    }
+}
+
+/**
+ * Starts exponential navigation with increasing speed
+ * @param initialDelay Initial delay before first navigation in milliseconds
+ * @param onNavigate Callback to execute for each navigation step
+ * @param isActive Lambda to check if navigation should continue
+ */
+private fun startExponentialNavigation(
+    initialDelay: Long = 500L,
+    onNavigate: () -> Unit,
+    isActive: () -> Boolean
+): Job {
+    return kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
+        var currentDelay = initialDelay
+        var navigationCount = 0
+
+        // Initial delay before starting
+        delay(initialDelay)
+
+        while (isActive()) { // Fixed: only call the function, don't reference the property
+            onNavigate()
+            navigationCount++
+
+            // Exponential speed increase: reduce delay by 15% each step, with minimum of 50ms
+            currentDelay = (currentDelay * 0.85f).toLong().coerceAtLeast(50L)
+
+            // Also cap the maximum speed after 20 steps to prevent excessive speed
+            if (navigationCount > 20) {
+                currentDelay = currentDelay.coerceAtLeast(30L)
+            }
+
+            delay(currentDelay)
+        }
+    }
+}
+
+// Helper function for timestamp formatting
+fun formatTimestamp(seconds: Int): String {
+    val hours = seconds / 3600
+    val minutes = (seconds % 3600) / 60
+    val secs = seconds % 60
+
+    return if (hours > 0) {
+        String.format("%d:%02d:%02d", hours, minutes, secs)
+    } else {
+        String.format("%d:%02d", minutes, secs)
     }
 }
