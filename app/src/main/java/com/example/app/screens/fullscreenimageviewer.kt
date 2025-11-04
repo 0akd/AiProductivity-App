@@ -4,9 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.PressGestureScope
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
@@ -33,6 +33,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -45,6 +46,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 
 @Composable
@@ -96,38 +98,76 @@ fun FullScreenImageViewer(
 
     // Handle auto-navigation when long pressing
     LaunchedEffect(isLongPressingNext, isLongPressingPrevious, hasNext, hasPrevious) {
-        // Cancel any existing navigation
+        // SAFETY: Cancel any existing navigation immediately
         navigationJob?.cancel()
+        navigationJob = null
 
+        // SAFETY: Only start new navigation if actively long pressing
         if (isLongPressingNext && hasNext) {
-            navigationJob = startExponentialNavigation(
-                initialDelay = 500L, // Initial delay before starting
-                onNavigate = onNext,
-                isActive = { isLongPressingNext && hasNext }
+            navigationJob = launch {
+                var currentDelay = 500L
+                var navigationCount = 0
 
-            )
+                // Initial delay before starting
+                delay(500L)
+
+                // SAFETY: Check all conditions in each iteration
+                while (isActive && isLongPressingNext && hasNext) {
+                    onNext()
+                    navigationCount++
+
+                    // Exponential speed increase
+                    currentDelay = (currentDelay * 0.85f).toLong().coerceAtLeast(50L)
+                    if (navigationCount > 20) {
+                        currentDelay = currentDelay.coerceAtLeast(30L)
+                    }
+
+                    delay(currentDelay)
+                }
+            }
         } else if (isLongPressingPrevious && hasPrevious) {
-            navigationJob = startExponentialNavigation(
-                initialDelay = 500L,
-                onNavigate = onPrevious,
+            navigationJob = launch {
+                var currentDelay = 500L
+                var navigationCount = 0
 
-                isActive = { isLongPressingPrevious && hasPrevious }
-            )
+                // Initial delay before starting
+                delay(500L)
+
+                // SAFETY: Check all conditions in each iteration
+                while (isActive && isLongPressingPrevious && hasPrevious) {
+                    onPrevious()
+                    navigationCount++
+
+                    // Exponential speed increase
+                    currentDelay = (currentDelay * 0.85f).toLong().coerceAtLeast(50L)
+                    if (navigationCount > 20) {
+                        currentDelay = currentDelay.coerceAtLeast(30L)
+                    }
+
+                    delay(currentDelay)
+                }
+            }
         }
     }
 
-    // Clean up when composable is disposed
+    // SAFETY: Clean up when composable is disposed
     LaunchedEffect(Unit) {
         try {
             awaitCancellation()
         } finally {
             navigationJob?.cancel()
+            isLongPressingNext = false
+            isLongPressingPrevious = false
         }
     }
 
     Dialog(
         onDismissRequest = {
-            // Only close if not zoomed/panned
+            // SAFETY: Stop any navigation and close if not zoomed/panned
+            isLongPressingNext = false
+            isLongPressingPrevious = false
+            navigationJob?.cancel()
+
             if (scale == 1f && offset == Offset.Zero) {
                 onClose()
             }
@@ -144,7 +184,7 @@ fun FullScreenImageViewer(
                 .fillMaxSize()
                 .background(Color.Black)
         ) {
-            // Image with zoom and pan
+            // Image with zoom, pan, and tap navigation
             bitmap?.let { bmp ->
                 Image(
                     bitmap = bmp.asImageBitmap(),
@@ -159,7 +199,7 @@ fun FullScreenImageViewer(
                         )
                         .pointerInput(Unit) {
                             detectTransformGestures { centroid, pan, zoom, rotation ->
-                                val newScale = (scale * zoom).coerceIn(0.5f, 5f) // Increased minimum scale to 0.5f
+                                val newScale = (scale * zoom).coerceIn(0.5f, 5f)
 
                                 if (newScale >= 0.5f) {
                                     scale = newScale
@@ -172,13 +212,79 @@ fun FullScreenImageViewer(
                                     offset = if (scale > 1f) {
                                         // When zoomed in, allow panning within bounds
                                         Offset(
-                                            x = (offset.x + pan.x * scale).coerceIn(-maxOffsetX, maxOffsetX),
-                                            y = (offset.y + pan.y * scale).coerceIn(-maxOffsetY, maxOffsetY)
+                                            x = (offset.x + pan.x * scale).coerceIn(
+                                                -maxOffsetX,
+                                                maxOffsetX
+                                            ),
+                                            y = (offset.y + pan.y * scale).coerceIn(
+                                                -maxOffsetY,
+                                                maxOffsetY
+                                            )
                                         )
                                     } else {
                                         // When zoomed out, reset to center or handle minimal offset
                                         Offset.Zero
                                     }
+                                }
+                            }
+                        }
+                        .pointerInput(hasNext, hasPrevious, scale) {
+                            awaitEachGesture {
+                                // SAFETY: Use Initial pass to catch pointer down immediately
+                                val down = awaitFirstDown(requireUnconsumed = false)
+
+                                // Only handle taps if not zoomed/panned
+                                if (scale == 1f && offset == Offset.Zero) {
+                                    val screenWidth = size.width
+                                    val tapX = down.position.x
+                                    val isLeftHalf = tapX < screenWidth / 2
+
+                                    // Wait for long press timeout (500ms)
+                                    val longPressTimeout = withTimeoutOrNull(500L) {
+                                        // SAFETY: Wait for pointer up/cancel in any pass
+                                        var change = down
+                                        while (change.pressed) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            change = event.changes.firstOrNull() ?: break
+                                        }
+                                        change
+                                    }
+
+                                    if (longPressTimeout == null) {
+                                        // Long press detected - start auto navigation
+                                        if (isLeftHalf && hasPrevious) {
+                                            isLongPressingPrevious = true
+                                        } else if (!isLeftHalf && hasNext) {
+                                            isLongPressingNext = true
+                                        }
+
+                                        // SAFETY: Wait for finger release and monitor continuously
+                                        var released = false
+                                        while (!released) {
+                                            val event = awaitPointerEvent(PointerEventPass.Main)
+                                            released = event.changes.all { !it.pressed }
+                                        }
+
+                                        // SAFETY: Immediately stop auto navigation when finger lifts
+                                        isLongPressingPrevious = false
+                                        isLongPressingNext = false
+                                        navigationJob?.cancel()
+                                    } else {
+                                        // Short tap - single navigation
+                                        // SAFETY: Ensure no long press state is active
+                                        isLongPressingPrevious = false
+                                        isLongPressingNext = false
+
+                                        if (isLeftHalf && hasPrevious) {
+                                            onPrevious()
+                                        } else if (!isLeftHalf && hasNext) {
+                                            onNext()
+                                        }
+                                    }
+                                } else {
+                                    // SAFETY: If zoomed, consume the gesture but ensure no navigation
+                                    isLongPressingPrevious = false
+                                    isLongPressingNext = false
                                 }
                             }
                         }
@@ -190,13 +296,12 @@ fun FullScreenImageViewer(
                 )
             }
 
-            // Top bar with web link, close button and info
+            // Top bar with web link, close button and info - REMOVED DARK BACKGROUND
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.TopCenter)
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .padding(8.dp),
+                    .padding(8.dp), // Removed background modifier
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -209,18 +314,23 @@ fun FullScreenImageViewer(
                         IconButton(
                             onClick = {
                                 val (_, videoUrl) = frameInfo
-                                val urlWithTimestamp = if (videoUrl.contains("&t=") || videoUrl.contains("?t=")) {
-                                    // Replace existing timestamp
-                                    videoUrl.replaceFirst(Regex("[?&]t=\\d+"), "?t=$timestampSeconds")
-                                } else if (videoUrl.contains("?")) {
-                                    "$videoUrl&t=$timestampSeconds"
-                                } else {
-                                    "$videoUrl?t=$timestampSeconds"
-                                }
+                                val urlWithTimestamp =
+                                    if (videoUrl.contains("&t=") || videoUrl.contains("?t=")) {
+                                        // Replace existing timestamp
+                                        videoUrl.replaceFirst(
+                                            Regex("[?&]t=\\d+"),
+                                            "?t=$timestampSeconds"
+                                        )
+                                    } else if (videoUrl.contains("?")) {
+                                        "$videoUrl&t=$timestampSeconds"
+                                    } else {
+                                        "$videoUrl?t=$timestampSeconds"
+                                    }
 
-                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                                    data = android.net.Uri.parse(urlWithTimestamp)
-                                }
+                                val intent =
+                                    android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                        data = android.net.Uri.parse(urlWithTimestamp)
+                                    }
                                 context.startActivity(intent)
                             },
                             modifier = Modifier
@@ -265,111 +375,27 @@ fun FullScreenImageViewer(
                         }
                     }
 
-                    IconButton(onClick = onClose) {
+                    IconButton(
+                        onClick = {
+                            // SAFETY: Stop navigation before closing
+                            isLongPressingNext = false
+                            isLongPressingPrevious = false
+                            navigationJob?.cancel()
+                            onClose()
+                        }
+                    ) {
                         Text("✖️", style = MaterialTheme.typography.headlineSmall)
                     }
                 }
             }
 
-            // Navigation buttons with long-press support
-            // Replace the navigation buttons section with this simpler version:
-            // Navigation buttons with proper long-press release detection
-            // Navigation buttons with proper long-press release detection
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .align(Alignment.Center)
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                // Previous button - FIXED VERSION
-                if (hasPrevious) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.5f),
-                                shape = MaterialTheme.shapes.medium
-                            )
-                            .pointerInput(hasPrevious) {
-                                detectTapGestures(
-                                    onPress = { pressOffset ->
-                                        // This will wait for release OR long press
-                                        val pressResult = tryAwaitRelease()
-                                        // If we reach here, press was released
-                                        isLongPressingPrevious = false
-                                    },
-                                    onLongPress = {
-                                        // Start long press navigation
-                                        isLongPressingPrevious = true
-                                    },
-                                    onTap = {
-                                        // Single tap - navigate once
-                                        onPrevious()
-                                    }
-                                )
-                            }
-                    ) {
-                        Text(
-                            "◀️",
-                            modifier = Modifier.align(Alignment.Center),
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = if (isLongPressingPrevious) Color.Yellow else Color.White
-                        )
-                    }
-                } else {
-                    // Placeholder for spacing when no previous
-                    Box(modifier = Modifier.size(64.dp))
-                }
-
-                // Next button - FIXED VERSION
-                if (hasNext) {
-                    Box(
-                        modifier = Modifier
-                            .size(64.dp)
-                            .background(
-                                Color.Black.copy(alpha = 0.5f),
-                                shape = MaterialTheme.shapes.medium
-                            )
-                            .pointerInput(hasNext) {
-                                detectTapGestures(
-                                    onPress = { pressOffset ->
-                                        // This will wait for release OR long press
-                                        val pressResult = tryAwaitRelease()
-                                        // If we reach here, press was released
-                                        isLongPressingNext = false
-                                    },
-                                    onLongPress = {
-                                        // Start long press navigation
-                                        isLongPressingNext = true
-                                    },
-                                    onTap = {
-                                        // Single tap - navigate once
-                                        onNext()
-                                    }
-                                )
-                            }
-                    ) {
-                        Text(
-                            "▶️",
-                            modifier = Modifier.align(Alignment.Center),
-                            style = MaterialTheme.typography.headlineLarge,
-                            color = if (isLongPressingNext) Color.Yellow else Color.White
-                        )
-                    }
-                } else {
-                    // Placeholder for spacing when no next
-                    Box(modifier = Modifier.size(64.dp))
-                }
-            }
-
-            // Bottom info bar
+            // Bottom info bar - REMOVED DARK BACKGROUND
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .align(Alignment.BottomCenter)
-                    .background(Color.Black.copy(alpha = 0.7f))
-                    .padding(12.dp)
+                    .wrapContentHeight() // Use wrapContentHeight instead of fixed background
+                    .padding(12.dp) // Removed background modifier
             ) {
                 Text(
                     text = File(imagePath).name,
@@ -385,7 +411,7 @@ fun FullScreenImageViewer(
                 // Show auto-navigation indicator
                 if (isLongPressingNext || isLongPressingPrevious) {
                     Text(
-                        text = "Auto-navigation: ${if (isLongPressingNext) "Next" else "Previous"}",
+                        text = "Auto-navigation: ${if (isLongPressingNext) "Next ▶️" else "Previous ◀️"}",
                         color = Color.Yellow,
                         style = MaterialTheme.typography.bodySmall
                     )
@@ -396,41 +422,8 @@ fun FullScreenImageViewer(
 }
 
 /**
- * Starts exponential navigation with increasing speed
- * @param initialDelay Initial delay before first navigation in milliseconds
- * @param onNavigate Callback to execute for each navigation step
- * @param isActive Lambda to check if navigation should continue
+ * Helper function for timestamp formatting
  */
-private fun startExponentialNavigation(
-    initialDelay: Long = 500L,
-    onNavigate: () -> Unit,
-    isActive: () -> Boolean
-): Job {
-    return kotlinx.coroutines.CoroutineScope(Dispatchers.Main).launch {
-        var currentDelay = initialDelay
-        var navigationCount = 0
-
-        // Initial delay before starting
-        delay(initialDelay)
-
-        while (isActive()) { // Fixed: only call the function, don't reference the property
-            onNavigate()
-            navigationCount++
-
-            // Exponential speed increase: reduce delay by 15% each step, with minimum of 50ms
-            currentDelay = (currentDelay * 0.85f).toLong().coerceAtLeast(50L)
-
-            // Also cap the maximum speed after 20 steps to prevent excessive speed
-            if (navigationCount > 20) {
-                currentDelay = currentDelay.coerceAtLeast(30L)
-            }
-
-            delay(currentDelay)
-        }
-    }
-}
-
-// Helper function for timestamp formatting
 fun formatTimestamp(seconds: Int): String {
     val hours = seconds / 3600
     val minutes = (seconds % 3600) / 60

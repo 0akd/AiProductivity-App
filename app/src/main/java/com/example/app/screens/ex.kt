@@ -1,38 +1,71 @@
 package com.arjundubey.app
 
-
+import android.util.Log
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-
 import androidx.compose.foundation.verticalScroll
-
+import androidx.compose.material.OutlinedTextField
+import androidx.compose.material.Text
 import androidx.compose.material3.*
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-
 import androidx.lifecycle.viewmodel.compose.viewModel
-
 import java.io.File
 
+// Add ClipboardManager at the top level
+object ClipboardManager {
+    var cutItem: FileSystemItem? = null
+    var originalPath: String? = null
 
+    fun cut(item: FileSystemItem) {
+        cutItem = item
+        originalPath = item.path
+    }
 
+    fun clear() {
+        cutItem = null
+        originalPath = null
+    }
 
+    fun hasItem(): Boolean = cutItem != null
+}
 
 @Composable
 fun YouTubeDownloaderScreen(
-    viewModel: DownloadViewModel = viewModel()
+    viewModel: DownloadViewModel = viewModel(),
+    initialUrl: String? = null
 ) {
     val context = LocalContext.current
 
     LaunchedEffect(Unit) {
         viewModel.initialize(context)
+    }
+
+    if (viewModel.showFolderSelection) {
+        FolderSelectionDialog(
+            viewModel = viewModel,
+            onConfirm = { viewModel.confirmDownload(context) },
+            onDismiss = {
+                viewModel.showFolderSelection = false
+                viewModel.newFolderName = ""
+                viewModel.folderSelectionHistory = emptyList()
+            }
+        )
+    }
+
+    // Set initial URL when shared
+    LaunchedEffect(initialUrl) {
+        if (initialUrl != null && initialUrl.isNotEmpty()) {
+            viewModel.url = initialUrl
+            Log.d("YouTubeDownloader", "Received shared URL: $initialUrl")
+        }
     }
 
     Column(
@@ -66,7 +99,8 @@ fun YouTubeDownloaderScreen(
                 label = { Text("YouTube URL") },
                 modifier = Modifier.fillMaxWidth(),
                 enabled = !viewModel.isDownloading,
-                singleLine = true
+                singleLine = true,
+                placeholder = { Text("Paste or share YouTube link") }
             )
 
             if (viewModel.errorMessage.isNotEmpty()) {
@@ -217,6 +251,45 @@ fun YouTubeDownloaderScreen(
 
         Divider(modifier = Modifier.padding(vertical = 16.dp))
 
+        // Global Paste Button (NEW)
+        if (ClipboardManager.hasItem()) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Cut: ${ClipboardManager.cutItem?.name}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+
+                Row {
+                    Button(
+                        onClick = {
+                            ClipboardManager.cutItem?.let { cutItem ->
+                                viewModel.pasteItem(cutItem, viewModel.currentPath ?: "")
+                            }
+                        },
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text("📋 Paste Here")
+                    }
+
+                    Button(
+                        onClick = { ClipboardManager.clear() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        )
+                    ) {
+                        Text("Cancel")
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         // Downloaded Files Section
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -272,30 +345,41 @@ fun YouTubeDownloaderScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                 } else {
+                    // Replace your LazyColumn section with this optimized version
+
                     LazyColumn(
                         modifier = Modifier.fillMaxSize()
                     ) {
-                        items(viewModel.fileSystemItems) { item ->
+                        items(
+                            items = viewModel.fileSystemItems,
+                            key = { it.path } // CRITICAL: Stable keys prevent full recomposition
+                        ) { item ->
+                            val isCut = ClipboardManager.cutItem?.path == item.path
                             FileSystemItemView(
                                 item = item,
-                                onDelete = { viewModel.deleteItem(item.path) },
+                                isCut = ClipboardManager.cutItem?.path == item.path, // Pass as parameter
+                                onDelete = {
+                                    viewModel.deleteItem(item.path)
+                                },
                                 onOpenFolder = {
-                                    if (item.isDirectory) {
-                                        viewModel.openFolder(item.path)
-                                    }
+                                    viewModel.openFolder(item.path)
                                 },
                                 onOpenImage = {
-                                    if (!item.isDirectory && item.type == "Image") {
-                                        viewModel.openImage(item.path)
-                                    }
+                                    viewModel.openImage(item.path)
                                 },
                                 onOpenAudio = {
-                                    if (!item.isDirectory && item.type == "Audio") {
-                                        viewModel.openAudio(item.path)
-                                    }
-                                }
+                                    viewModel.openAudio(item.path)
+                                },
+                                onCut = { cutItem ->
+                                    viewModel.cutItem(cutItem)
+                                },
+                                onPaste = { pasteItem, destinationPath ->
+                                    viewModel.pasteItem(pasteItem, destinationPath)
+                                },
+                                currentPath = viewModel.currentPath ?: ""
                             )
                         }
+
                     }
                 }
             }
@@ -312,8 +396,8 @@ fun YouTubeDownloaderScreen(
                 onPrevious = { viewModel.previousImage() },
                 hasNext = viewModel.currentImageIndex < viewModel.currentImageList.size - 1,
                 hasPrevious = viewModel.currentImageIndex > 0,
-                frameInfo = viewModel.selectedFrameInfo,  // NEW: Pass frame info
-                frameInterval = viewModel.frameInterval    // NEW: Pass interval
+                frameInfo = viewModel.selectedFrameInfo,
+                frameInterval = viewModel.frameInterval
             )
         }
 
@@ -329,10 +413,7 @@ fun YouTubeDownloaderScreen(
 
 
 
-
-
 @Composable
 fun MediaPlayer() {
     TODO("Not yet implemented")
 }
-

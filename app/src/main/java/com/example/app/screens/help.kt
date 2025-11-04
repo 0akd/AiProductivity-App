@@ -1,4 +1,5 @@
 package com.arjundubey.app
+
 import android.media.MediaPlayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -22,81 +23,178 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import java.io.File
+
+// ViewModel to retain MediaPlayer across configuration changes
+class AudioPlayerViewModel : ViewModel() {
+    var mediaPlayer: MediaPlayer? = null
+        private set
+
+    var isInitialized by mutableStateOf(false)
+        private set
+
+    var isPlaying by mutableStateOf(false)
+
+    var currentAudioPath: String? = null
+        private set
+
+    var onCompletionCallback: (() -> Unit)? = null
+
+    fun initializePlayer(
+        audioPath: String,
+        onReady: (Int) -> Unit,
+        onError: (String) -> Unit,
+        onCompletion: () -> Unit
+    ) {
+        // Only initialize if this is a new audio file or first time
+        if (currentAudioPath == audioPath && mediaPlayer != null) {
+            // Already initialized for this file
+            mediaPlayer?.let {
+                isInitialized = true
+                onReady(it.duration)
+            }
+            return
+        }
+
+        onCompletionCallback = onCompletion
+        currentAudioPath = audioPath
+
+        // Release old player if exists
+        mediaPlayer?.release()
+
+        try {
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(audioPath)
+                prepareAsync()
+                setOnPreparedListener { mp ->
+                    isInitialized = true
+                    onReady(mp.duration)
+                }
+                setOnErrorListener { _, what, extra ->
+                    onError("MediaPlayer error: $what, $extra")
+                    true
+                }
+                setOnCompletionListener {
+                    this@AudioPlayerViewModel.isPlaying = false
+                    onCompletionCallback?.invoke()
+                }
+            }
+        } catch (e: Exception) {
+            onError("Failed to load audio: ${e.message}")
+        }
+    }
+
+    fun play() {
+        mediaPlayer?.start()
+        isPlaying = true
+    }
+
+    fun pause() {
+        mediaPlayer?.pause()
+        isPlaying = false
+    }
+
+    fun seekTo(position: Int) {
+        mediaPlayer?.seekTo(position)
+    }
+
+    fun restart() {
+        mediaPlayer?.seekTo(0)
+    }
+
+    fun getCurrentPosition(): Int {
+        return mediaPlayer?.currentPosition ?: 0
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        mediaPlayer?.release()
+        mediaPlayer = null
+    }
+}
 
 @Composable
 fun AudioPlayerDialog(
     audioPath: String,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    viewModel: AudioPlayerViewModel = viewModel()
 ) {
-    val context = LocalContext.current
-    var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
-    var isPlaying by remember { mutableStateOf(false) }
-    var currentPosition by remember { mutableStateOf(0) }
     var duration by remember { mutableStateOf(0) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(!viewModel.isInitialized) }
     var error by remember { mutableStateOf<String?>(null) }
 
-    DisposableEffect(audioPath) {
-        val player = MediaPlayer().apply {
-            try {
-                setDataSource(audioPath)
-                prepareAsync()
-                setOnPreparedListener { mp ->
-                    duration = mp.duration
-                    isLoading = false
-                }
-                setOnErrorListener { mp, what, extra ->
-                    error = "MediaPlayer error: $what, $extra"
-                    isLoading = false
-                    true
-                }
-                setOnCompletionListener {
-                    isPlaying = false
-                    currentPosition = 0
-                }
-            } catch (e: Exception) {
-                error = "Failed to load audio: ${e.message}"
-                isLoading = false
-            }
-        }
-        mediaPlayer = player
+    // Separate state for slider - this is the key change
+    var sliderPosition by remember { mutableFloatStateOf(0f) }
+    var isDragging by remember { mutableStateOf(false) }
 
-        onDispose {
-            player.release()
-            mediaPlayer = null
+    // Initialize player only once per audio file
+    LaunchedEffect(audioPath) {
+        if (viewModel.currentAudioPath != audioPath || viewModel.mediaPlayer == null) {
+            viewModel.initializePlayer(
+                audioPath = audioPath,
+                onReady = { mediaDuration ->
+                    duration = mediaDuration
+                    isLoading = false
+                },
+                onError = { errorMsg ->
+                    error = errorMsg
+                    isLoading = false
+                },
+                onCompletion = {
+                    sliderPosition = 0f
+                }
+            )
+        } else {
+            // Already initialized, just update UI state
+            duration = viewModel.mediaPlayer?.duration ?: 0
+            isLoading = false
+            sliderPosition = viewModel.getCurrentPosition().toFloat()
         }
     }
 
-    // Update position when playing
-    LaunchedEffect(isPlaying) {
-        while (isPlaying) {
-            mediaPlayer?.let { player ->
-                if (player.isPlaying) {
-                    currentPosition = player.currentPosition
-                }
+    DisposableEffect(Unit) {
+        onDispose {
+            // Just pause if playing when dialog is closed
+            if (viewModel.isPlaying) {
+                viewModel.pause()
+            }
+        }
+    }
+
+    // Update slider position from MediaPlayer only when NOT dragging
+    LaunchedEffect(viewModel.isPlaying) {
+        while (isActive && viewModel.isPlaying) {
+            if (!isDragging) {
+                sliderPosition = viewModel.getCurrentPosition().toFloat()
             }
             delay(100)
         }
     }
 
     Dialog(
-        onDismissRequest = onClose
+        onDismissRequest = {
+            viewModel.pause()
+            onClose()
+        }
     ) {
         Card(
             modifier = Modifier
@@ -128,12 +226,16 @@ fun AudioPlayerDialog(
                         modifier = Modifier.padding(16.dp)
                     )
                 } else {
-                    // Progress slider
+                    // Progress slider - completely independent state
                     Slider(
-                        value = currentPosition.toFloat(),
-                        onValueChange = { newPosition ->
-                            mediaPlayer?.seekTo(newPosition.toInt())
-                            currentPosition = newPosition.toInt()
+                        value = sliderPosition,
+                        onValueChange = { newValue ->
+                            isDragging = true
+                            sliderPosition = newValue
+                        },
+                        onValueChangeFinished = {
+                            isDragging = false
+                            viewModel.seekTo(sliderPosition.toInt())
                         },
                         valueRange = 0f..duration.toFloat(),
                         modifier = Modifier.fillMaxWidth()
@@ -144,7 +246,7 @@ fun AudioPlayerDialog(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text(formatTime(currentPosition))
+                        Text(formatTime(sliderPosition.toInt()))
                         Text(formatTime(duration))
                     }
 
@@ -158,8 +260,8 @@ fun AudioPlayerDialog(
                     ) {
                         IconButton(
                             onClick = {
-                                mediaPlayer?.seekTo(0)
-                                currentPosition = 0
+                                viewModel.restart()
+                                sliderPosition = 0f
                             }
                         ) {
                             Icon(
@@ -172,12 +274,10 @@ fun AudioPlayerDialog(
 
                         IconButton(
                             onClick = {
-                                if (isPlaying) {
-                                    mediaPlayer?.pause()
-                                    isPlaying = false
+                                if (viewModel.isPlaying) {
+                                    viewModel.pause()
                                 } else {
-                                    mediaPlayer?.start()
-                                    isPlaying = true
+                                    viewModel.play()
                                 }
                             },
                             modifier = Modifier
@@ -188,8 +288,8 @@ fun AudioPlayerDialog(
                                 )
                         ) {
                             Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
+                                imageVector = if (viewModel.isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (viewModel.isPlaying) "Pause" else "Play",
                                 modifier = Modifier.size(32.dp),
                                 tint = MaterialTheme.colorScheme.onPrimary
                             )
@@ -201,7 +301,10 @@ fun AudioPlayerDialog(
 
                 // Close button
                 Button(
-                    onClick = onClose,
+                    onClick = {
+                        viewModel.pause()
+                        onClose()
+                    },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Text("Close")

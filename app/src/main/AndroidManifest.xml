@@ -1,14 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
     package="com.arjundubey.app">
 
-
-<!-- Permissions -->
+    <!-- Permissions -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.microphone" android:required="true" />
     <uses-permission android:name="android.permission.VIBRATE" />
-
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
@@ -20,6 +19,7 @@
 
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <application
         android:extractNativeLibs="true"
         android:hardwareAccelerated="true"
@@ -31,18 +31,47 @@
         android:label="deArKs"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.MyApplication"> <!-- DayNight Theme applied -->
+        android:theme="@style/Theme.MyApplication">
 
         <!-- Main Launcher Activity -->
         <activity
             android:name="com.arjundubey.app.MainActivity"
-
             android:exported="true"
-
+            android:launchMode="singleTask"
             android:theme="@style/Theme.MyApplication">
+
+            <!-- Default launcher intent -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Intent filter for sharing text/links -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+
+            <!-- Intent filter for opening YouTube links directly -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <!-- YouTube.com URLs -->
+                <data android:scheme="http" android:host="youtube.com" />
+                <data android:scheme="https" android:host="youtube.com" />
+                <data android:scheme="http" android:host="www.youtube.com" />
+                <data android:scheme="https" android:host="www.youtube.com" />
+
+                <!-- Youtu.be short URLs -->
+                <data android:scheme="http" android:host="youtu.be" />
+                <data android:scheme="https" android:host="youtu.be" />
+
+                <!-- YouTube mobile URLs -->
+                <data android:scheme="http" android:host="m.youtube.com" />
+                <data android:scheme="https" android:host="m.youtube.com" />
             </intent-filter>
         </activity>
 
@@ -53,13 +82,16 @@
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:hardwareAccelerated="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
         <receiver android:name="androidx.work.impl.background.systemalarm.ConstraintProxy$BatteryChargingProxy"
             android:enabled="false"
             tools:ignore="DisabledAttribute" />
+
         <receiver
             android:name=".LeetCodeNotificationReceiver"
             android:enabled="true"
             android:exported="false" />
+
         <service
             android:name="androidx.work.impl.foreground.SystemForegroundService"
             android:foregroundServiceType="specialUse"
@@ -78,6 +110,7 @@
                 <data android:scheme="package" />
             </intent-filter>
         </receiver>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

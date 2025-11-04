@@ -128,6 +128,10 @@ dependencies {
     implementation("androidx.navigation:navigation-compose")
     implementation(libs.androidx.ui)
     implementation(libs.androidx.foundation)
+    implementation(libs.androidx.compose.foundation.layout)
+    implementation(libs.androidx.compose.runtime)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.ui.text)
 
     // Testing
     testImplementation(libs.junit)

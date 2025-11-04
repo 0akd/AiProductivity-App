@@ -3,6 +3,7 @@ package com.arjundubey.app
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.os.Environment
+import android.util.Log
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -11,6 +12,8 @@ import androidx.lifecycle.viewModelScope
 import com.yausername.youtubedl_android.YoutubeDL
 import com.yausername.youtubedl_android.YoutubeDLRequest
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -40,6 +43,20 @@ class DownloadViewModel : ViewModel() {
     var currentImageList by mutableStateOf<List<String>>(emptyList())
     var currentImageIndex by mutableStateOf(0)
     var selectedAudioPath by mutableStateOf<String?>(null)
+    var showPasteDialog by mutableStateOf(false)
+    var pasteDestination by mutableStateOf<String?>(null)
+    var showFolderSelection by mutableStateOf(false)
+    var availableFolders by mutableStateOf<List<FileSystemItem>>(emptyList())
+    var selectedFolder by mutableStateOf<FileSystemItem?>(null)
+    var newFolderName by mutableStateOf("")
+    var currentFolderSelectionPath by mutableStateOf<String?>(null)
+    var folderSelectionHistory by mutableStateOf<List<String>>(emptyList())
+    var currentVideoUrl by mutableStateOf("")
+    var selectedFrameInfo by mutableStateOf<Pair<Int, String>?>(null)
+
+    // CRITICAL: Debounce refresh to prevent rapid file scans
+    private var refreshJob: Job? = null
+
 
     fun initialize(context: android.content.Context) {
         viewModelScope.launch {
@@ -57,135 +74,258 @@ class DownloadViewModel : ViewModel() {
         }
     }
 
+    // OPTIMIZED: Instant UI update for cut
+    fun cutItem(item: FileSystemItem) {
+        ClipboardManager.cut(item)
+        // Force instant recomposition without refreshing files
+        fileSystemItems = fileSystemItems.toList()
+    }
+
+    // OPTIMIZED: Instant UI update for paste with background operation
+    fun pasteItem(item: FileSystemItem, destinationPath: String) {
+        // 1. Update UI IMMEDIATELY - remove from current list
+        fileSystemItems = fileSystemItems.filter { it.path != item.path }
+        ClipboardManager.clear()
+
+        // 2. Do actual file move in background
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val sourceFile = File(item.path)
+                val destDir = File(destinationPath)
+
+                if (!destDir.exists()) {
+                    destDir.mkdirs()
+                }
+
+                val destFile = File(destDir, sourceFile.name)
+
+                // Try fast rename first
+                val moved = sourceFile.renameTo(destFile)
+
+                if (!moved) {
+                    // Fallback to copy+delete for cross-device moves
+                    if (sourceFile.isDirectory) {
+                        sourceFile.copyRecursively(destFile, overwrite = true)
+                        sourceFile.deleteRecursively()
+                    } else {
+                        sourceFile.copyTo(destFile, overwrite = true)
+                        sourceFile.delete()
+                    }
+                }
+
+                // Refresh to show in new location (debounced)
+                debouncedRefresh()
+            } catch (e: Exception) {
+                errorMessage = "Failed to move item: ${e.message}"
+                // Revert UI on error
+                withContext(Dispatchers.Main) {
+                    refreshFileList()
+                }
+            }
+        }
+    }
+
+    fun pasteToCurrentDirectory() {
+        ClipboardManager.cutItem?.let { cutItem ->
+            val destination = currentPath ?: getDefaultDownloadDirectory()
+            pasteItem(cutItem, destination)
+        }
+    }
+
+    private fun getDefaultDownloadDirectory(): String {
+        return File(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            "youtubedl-android"
+        ).absolutePath
+    }
+
+    fun clearClipboard() {
+        ClipboardManager.clear()
+        fileSystemItems = fileSystemItems.toList() // Force recomposition
+    }
+
+    // OPTIMIZED: Debounced refresh prevents rapid consecutive scans
+    private fun debouncedRefresh() {
+        refreshJob?.cancel()
+        refreshJob = viewModelScope.launch {
+            delay(200) // Wait 200ms for multiple operations to complete
+            refreshFileList()
+        }
+    }
+
+    // OPTIMIZED: Background refresh with minimal blocking
     fun refreshFileList() {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    val targetDir = if (currentPath != null) {
-                        File(currentPath!!)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val targetDir = if (currentPath != null) {
+                    File(currentPath!!)
+                } else {
+                    if (selectedFolder != null) {
+                        File(selectedFolder!!.path)
                     } else {
                         File(
                             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
                             "youtubedl-android"
                         )
                     }
-
-                    if (targetDir.exists()) {
-                        // Check if current directory has metadata file
-                        val metadataFile = File(targetDir, ".video_metadata")
-                        val metadata = if (metadataFile.exists()) {
-                            val lines = metadataFile.readLines()
-                            val url = lines.find { it.startsWith("URL=") }?.substringAfter("URL=")
-                            val interval = lines.find { it.startsWith("INTERVAL=") }?.substringAfter("INTERVAL=")?.toIntOrNull()
-                            Pair(url, interval)
-                        } else {
-                            Pair(null, null)
-                        }
-
-                        val items = targetDir.listFiles()
-                            ?.filter { !it.name.startsWith(".") } // Hide metadata files
-                            ?.map { file ->
-                                if (file.isDirectory) {
-                                    val fileCount = file.listFiles()?.size ?: 0
-                                    FileSystemItem(
-                                        name = file.name,
-                                        path = file.absolutePath,
-                                        size = calculateFolderSize(file),
-                                        lastModified = file.lastModified(),
-                                        type = "Folder",
-                                        isDirectory = true,
-                                        itemCount = fileCount
-                                    )
-                                } else {
-                                    val type = when (file.extension.lowercase()) {
-                                        "mp4", "mkv", "avi", "mov" -> "Video"
-                                        "mp3", "m4a", "opus", "ogg", "wav", "webm" -> "Audio"
-                                        "jpg", "jpeg", "png" -> "Image"
-                                        else -> "File"
-                                    }
-
-                                    // Extract frame number from filename
-                                    val frameNumber = if (type == "Image" && file.name.startsWith("frame_")) {
-                                        file.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
-                                    } else null
-
-                                    FileSystemItem(
-                                        name = file.name,
-                                        path = file.absolutePath,
-                                        size = file.length(),
-                                        lastModified = file.lastModified(),
-                                        type = type,
-                                        isDirectory = false,
-                                        frameNumber = frameNumber,
-                                        videoUrl = if (frameNumber != null) metadata.first else null
-                                    )
-                                }
-                            }
-                            ?.sortedWith(compareByDescending<FileSystemItem> { it.isDirectory }.thenByDescending { it.lastModified })
-                            ?: emptyList()
-
-                        fileSystemItems = items
-                    }
-                } catch (e: Exception) {
-                    // Handle error silently
                 }
+
+                if (!targetDir.exists()) {
+                    withContext(Dispatchers.Main) {
+                        fileSystemItems = emptyList()
+                    }
+                    return@launch
+                }
+
+                // Load metadata once
+                val metadataFile = File(targetDir, ".video_metadata")
+                val metadata = if (metadataFile.exists()) {
+                    try {
+                        val lines = metadataFile.readLines()
+                        val url = lines.find { it.startsWith("URL=") }?.substringAfter("URL=")
+                        val interval = lines.find { it.startsWith("INTERVAL=") }?.substringAfter("INTERVAL=")?.toIntOrNull()
+                        Pair(url, interval)
+                    } catch (e: Exception) {
+                        Pair(null, null)
+                    }
+                } else {
+                    Pair(null, null)
+                }
+
+                // Fast file scan
+                val files = targetDir.listFiles() ?: emptyArray()
+                val items = files
+                    .filter { !it.name.startsWith(".") }
+                    .map { file ->
+                        if (file.isDirectory) {
+                            val fileCount = try {
+                                file.listFiles()?.size ?: 0
+                            } catch (e: Exception) {
+                                0
+                            }
+
+                            FileSystemItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                size = 0L, // Don't calculate folder size - it's slow
+                                lastModified = file.lastModified(),
+                                type = "Folder",
+                                isDirectory = true,
+                                itemCount = fileCount
+                            )
+                        } else {
+                            val extension = file.extension.lowercase()
+                            val type = when (extension) {
+                                "mp4", "mkv", "avi", "mov" -> "Video"
+                                "mp3", "m4a", "opus", "ogg", "wav", "webm" -> "Audio"
+                                "jpg", "jpeg", "png" -> "Image"
+                                else -> "File"
+                            }
+
+                            val frameNumber = if (type == "Image" && file.name.startsWith("frame_")) {
+                                file.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
+                            } else null
+
+                            FileSystemItem(
+                                name = file.name,
+                                path = file.absolutePath,
+                                size = file.length(),
+                                lastModified = file.lastModified(),
+                                type = type,
+                                isDirectory = false,
+                                frameNumber = frameNumber,
+                                videoUrl = if (frameNumber != null) metadata.first else null
+                            )
+                        }
+                    }
+                    .sortedWith(
+                        compareByDescending<FileSystemItem> { it.isDirectory }
+                            .thenByDescending { it.lastModified }
+                    )
+
+                // Update UI on main thread
+                withContext(Dispatchers.Main) {
+                    fileSystemItems = items
+                }
+            } catch (e: Exception) {
+                Log.e("DownloadViewModel", "Error refreshing file list", e)
             }
         }
     }
 
+    // OPTIMIZED: Instant navigation with background load
     fun openFolder(folderPath: String) {
         pathHistory = pathHistory + (currentPath ?: "")
         currentPath = folderPath
-        refreshFileList()
+        fileSystemItems = emptyList() // Clear immediately to show loading state
+
+        viewModelScope.launch(Dispatchers.IO) {
+            refreshFileList()
+        }
     }
 
+    fun openFolderSelection() {
+        loadAvailableFolders()
+        folderSelectionHistory = emptyList()
+        showFolderSelection = true
+    }
+
+    // OPTIMIZED: Instant back navigation
     fun goBack() {
         if (pathHistory.isNotEmpty()) {
             currentPath = pathHistory.lastOrNull()?.takeIf { it.isNotEmpty() }
             pathHistory = pathHistory.dropLast(1)
-            refreshFileList()
+            fileSystemItems = emptyList() // Clear for instant feedback
+
+            viewModelScope.launch(Dispatchers.IO) {
+                refreshFileList()
+            }
         }
     }
 
     fun openImage(imagePath: String) {
         selectedImagePath = imagePath
-
-        // Get all images in the same directory
         val imageFile = File(imagePath)
         val parentDir = imageFile.parentFile
 
         if (parentDir != null && parentDir.exists()) {
-            val imageExtensions = listOf("jpg", "jpeg", "png")
+            viewModelScope.launch(Dispatchers.IO) {
+                val imageExtensions = listOf("jpg", "jpeg", "png")
 
-            // Load metadata
-            val metadataFile = File(parentDir, ".video_metadata")
-            val metadata = if (metadataFile.exists()) {
-                val lines = metadataFile.readLines()
-                val url = lines.find { it.startsWith("URL=") }?.substringAfter("URL=")
-                val interval = lines.find { it.startsWith("INTERVAL=") }?.substringAfter("INTERVAL=")?.toIntOrNull() ?: frameInterval
-                Pair(url, interval)
-            } else {
-                Pair(null, frameInterval)
-            }
+                val metadataFile = File(parentDir, ".video_metadata")
+                val metadata = if (metadataFile.exists()) {
+                    try {
+                        val lines = metadataFile.readLines()
+                        val url = lines.find { it.startsWith("URL=") }?.substringAfter("URL=")
+                        val interval = lines.find { it.startsWith("INTERVAL=") }?.substringAfter("INTERVAL=")?.toIntOrNull() ?: frameInterval
+                        Pair(url, interval)
+                    } catch (e: Exception) {
+                        Pair(null, frameInterval)
+                    }
+                } else {
+                    Pair(null, frameInterval)
+                }
 
-            currentImageList = parentDir.listFiles()
-                ?.filter { it.isFile && it.extension.lowercase() in imageExtensions }
-                ?.sortedBy { it.name }
-                ?.map { it.absolutePath }
-                ?: emptyList()
+                val images = parentDir.listFiles()
+                    ?.filter { it.isFile && it.extension.lowercase() in imageExtensions }
+                    ?.sortedBy { it.name }
+                    ?.map { it.absolutePath }
+                    ?: emptyList()
 
-            currentImageIndex = currentImageList.indexOf(imagePath).coerceAtLeast(0)
+                val index = images.indexOf(imagePath).coerceAtLeast(0)
+                val frameNumber = imageFile.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
+                val frameInfo = if (frameNumber != null && metadata.first != null) {
+                    Pair(frameNumber, metadata.first!!)
+                } else null
 
-            // Extract frame number and set frame info
-            val frameNumber = imageFile.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
-            if (frameNumber != null && metadata.first != null) {
-                selectedFrameInfo = Pair(frameNumber, metadata.first!!)
-            } else {
-                selectedFrameInfo = null
+                withContext(Dispatchers.Main) {
+                    currentImageList = images
+                    currentImageIndex = index
+                    selectedFrameInfo = frameInfo
+                }
             }
         }
     }
-
 
     fun closeImage() {
         selectedImagePath = null
@@ -200,22 +340,26 @@ class DownloadViewModel : ViewModel() {
     fun closeAudio() {
         selectedAudioPath = null
     }
+
     private fun updateFrameInfo() {
         selectedImagePath?.let { path ->
             val imageFile = File(path)
             val parentDir = imageFile.parentFile
 
             if (parentDir != null && parentDir.exists()) {
-                val metadataFile = File(parentDir, ".video_metadata")
-                val url = if (metadataFile.exists()) {
-                    metadataFile.readLines().find { it.startsWith("URL=") }?.substringAfter("URL=")
-                } else null
+                viewModelScope.launch(Dispatchers.IO) {
+                    val metadataFile = File(parentDir, ".video_metadata")
+                    val url = if (metadataFile.exists()) {
+                        metadataFile.readLines().find { it.startsWith("URL=") }?.substringAfter("URL=")
+                    } else null
 
-                val frameNumber = imageFile.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
-                if (frameNumber != null && url != null) {
-                    selectedFrameInfo = Pair(frameNumber, url)
-                } else {
-                    selectedFrameInfo = null
+                    val frameNumber = imageFile.nameWithoutExtension.substringAfter("frame_").toIntOrNull()
+
+                    withContext(Dispatchers.Main) {
+                        selectedFrameInfo = if (frameNumber != null && url != null) {
+                            Pair(frameNumber, url)
+                        } else null
+                    }
                 }
             }
         }
@@ -239,31 +383,41 @@ class DownloadViewModel : ViewModel() {
 
     private fun calculateFolderSize(folder: File): Long {
         var size = 0L
-        folder.listFiles()?.forEach { file ->
-            size += if (file.isDirectory) {
-                calculateFolderSize(file)
-            } else {
-                file.length()
+        try {
+            folder.listFiles()?.forEach { file ->
+                size += if (file.isDirectory) {
+                    calculateFolderSize(file)
+                } else {
+                    file.length()
+                }
             }
+        } catch (e: Exception) {
+            // Ignore errors
         }
         return size
     }
 
+    // OPTIMIZED: Instant delete with background operation
     fun deleteItem(itemPath: String) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) {
-                try {
-                    val file = File(itemPath)
-                    if (file.exists()) {
-                        if (file.isDirectory) {
-                            file.deleteRecursively()
-                        } else {
-                            file.delete()
-                        }
-                        refreshFileList()
+        // 1. Update UI IMMEDIATELY
+        fileSystemItems = fileSystemItems.filter { it.path != itemPath }
+
+        // 2. Do actual deletion in background
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val file = File(itemPath)
+                if (file.exists()) {
+                    if (file.isDirectory) {
+                        file.deleteRecursively()
+                    } else {
+                        file.delete()
                     }
-                } catch (e: Exception) {
-                    // Handle error
+                }
+            } catch (e: Exception) {
+                Log.e("DownloadViewModel", "Error deleting file", e)
+                // Revert UI on error
+                withContext(Dispatchers.Main) {
+                    refreshFileList()
                 }
             }
         }
@@ -301,7 +455,50 @@ class DownloadViewModel : ViewModel() {
             return
         }
 
-        currentVideoUrl = url  // NEW: Save the URL
+        currentVideoUrl = url
+        openFolderSelection()
+    }
+
+    fun createNewFolder() {
+        if (newFolderName.isBlank()) return
+
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val baseDir = if (currentFolderSelectionPath != null) {
+                    File(currentFolderSelectionPath!!)
+                } else {
+                    File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        "youtubedl-android"
+                    )
+                }
+
+                val newFolder = File(baseDir, newFolderName)
+                if (!newFolder.exists()) {
+                    newFolder.mkdirs()
+
+                    withContext(Dispatchers.Main) {
+                        selectedFolder = FileSystemItem(
+                            name = newFolder.name,
+                            path = newFolder.absolutePath,
+                            size = 0,
+                            lastModified = newFolder.lastModified(),
+                            type = "Folder",
+                            isDirectory = true,
+                            itemCount = 0
+                        )
+                        newFolderName = ""
+                    }
+
+                    loadAvailableFolders(baseDir.absolutePath)
+                }
+            }
+        }
+    }
+
+    fun confirmDownload(context: android.content.Context) {
+        showFolderSelection = false
+        val selectedFolderPath = selectedFolder?.path
 
         viewModelScope.launch {
             isDownloading = true
@@ -317,7 +514,7 @@ class DownloadViewModel : ViewModel() {
                 } else {
                     downloadVideo(context)
                 }
-                refreshFileList()
+                debouncedRefresh() // Use debounced refresh
             } catch (e: Exception) {
                 handleDownloadError(e)
             } finally {
@@ -326,13 +523,16 @@ class DownloadViewModel : ViewModel() {
         }
     }
 
-
     private suspend fun downloadVideo(context: android.content.Context) {
         val videoPath = withContext(Dispatchers.IO) {
-            val downloadDir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "youtubedl-android"
-            )
+            val downloadDir = if (selectedFolder != null) {
+                File(selectedFolder!!.path)
+            } else {
+                File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "youtubedl-android"
+                )
+            }
 
             if (!downloadDir.exists()) {
                 downloadDir.mkdirs()
@@ -341,7 +541,6 @@ class DownloadViewModel : ViewModel() {
             var downloadSuccess = false
             var selectedQuality = ""
 
-            // Try 1080p
             try {
                 downloadStatus = "Downloading 1080p..."
                 val request1080 = YoutubeDLRequest(url)
@@ -358,7 +557,6 @@ class DownloadViewModel : ViewModel() {
                 downloadSuccess = true
                 downloadStatus = "Downloaded 1080p"
             } catch (e: Exception) {
-                // Try 720p
                 try {
                     downloadStatus = "Downloading 720p..."
                     val request720 = YoutubeDLRequest(url)
@@ -375,7 +573,6 @@ class DownloadViewModel : ViewModel() {
                     downloadSuccess = true
                     downloadStatus = "Downloaded 720p"
                 } catch (e2: Exception) {
-                    // Try best available
                     downloadStatus = "Downloading best quality..."
                     val requestBest = YoutubeDLRequest(url)
                     requestBest.addOption("-f", "best")
@@ -409,15 +606,94 @@ class DownloadViewModel : ViewModel() {
         }
     }
 
+// Add these methods to your DownloadViewModel class
+
+    fun navigateToFolderInSelection(folderPath: String) {
+        // Add current path to history before navigating
+        currentFolderSelectionPath?.let { currentPath ->
+            folderSelectionHistory = folderSelectionHistory + currentPath
+        }
+        loadAvailableFolders(folderPath)
+    }
+
+    fun goBackInFolderSelection() {
+        if (folderSelectionHistory.isNotEmpty()) {
+            val previousPath = folderSelectionHistory.last()
+            folderSelectionHistory = folderSelectionHistory.dropLast(1)
+            loadAvailableFolders(previousPath)
+        }
+    }
+
+    fun goToRootInFolderSelection() {
+        // Clear history and go to root
+        folderSelectionHistory = emptyList()
+        loadAvailableFolders()
+    }
+
+    fun loadAvailableFolders(targetPath: String? = null) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val baseDir = if (targetPath != null) {
+                    File(targetPath)
+                } else {
+                    File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                        "youtubedl-android"
+                    )
+                }
+
+                if (!baseDir.exists()) {
+                    baseDir.mkdirs()
+                }
+
+                val folders = baseDir.listFiles()
+                    ?.filter { it.isDirectory && !it.name.startsWith(".") }
+                    ?.map { file ->
+                        FileSystemItem(
+                            name = file.name,
+                            path = file.absolutePath,
+                            size = 0L,
+                            lastModified = file.lastModified(),
+                            type = "Folder",
+                            isDirectory = true,
+                            itemCount = file.listFiles()?.size ?: 0
+                        )
+                    }
+                    ?.sortedBy { it.name }
+                    ?: emptyList()
+
+                withContext(Dispatchers.Main) {
+                    availableFolders = folders
+                    currentFolderSelectionPath = baseDir.absolutePath
+
+                    // Only auto-select if no folder is selected yet or we explicitly changed path
+                    if (selectedFolder == null || targetPath != null) {
+                        selectedFolder = FileSystemItem(
+                            name = baseDir.name,
+                            path = baseDir.absolutePath,
+                            size = 0L,
+                            lastModified = baseDir.lastModified(),
+                            type = "Folder",
+                            isDirectory = true,
+                            itemCount = baseDir.listFiles()?.size ?: 0
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+
+
     private suspend fun downloadAudioOnly(context: android.content.Context) {
         withContext(Dispatchers.IO) {
-            val downloadDir = File(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
-                "youtubedl-android"
-            )
-
-            if (!downloadDir.exists()) {
-                downloadDir.mkdirs()
+            val downloadDir = if (selectedFolder != null) {
+                File(selectedFolder!!.path)
+            } else {
+                File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    "youtubedl-android"
+                )
             }
 
             try {
@@ -458,10 +734,6 @@ class DownloadViewModel : ViewModel() {
         downloadStatus = "Download failed"
     }
 
-    var currentVideoUrl by mutableStateOf("")  // NEW: Store current video URL
-    var selectedFrameInfo by mutableStateOf<Pair<Int, String>?>(null)  // NEW: (frameNumber, videoUrl)
-
-    // Modify extractFramesFromVideo to include metadata
     private suspend fun extractFramesFromVideo(videoPath: String) {
         isExtractingFrames = true
         extractionStatus = "Extracting frames..."
@@ -469,13 +741,18 @@ class DownloadViewModel : ViewModel() {
         try {
             withContext(Dispatchers.IO) {
                 val videoFile = File(videoPath)
-                val framesDir = File(videoFile.parentFile, "${videoFile.nameWithoutExtension}_frames")
+                val baseFramesDir = if (selectedFolder != null) {
+                    File(selectedFolder!!.path)
+                } else {
+                    videoFile.parentFile
+                }
+
+                val framesDir = File(baseFramesDir, "${videoFile.nameWithoutExtension}_frames")
 
                 if (!framesDir.exists()) {
                     framesDir.mkdirs()
                 }
 
-                // NEW: Save video URL to metadata file
                 val metadataFile = File(framesDir, ".video_metadata")
                 metadataFile.writeText("URL=$currentVideoUrl\nINTERVAL=$frameInterval")
 
@@ -509,7 +786,10 @@ class DownloadViewModel : ViewModel() {
                                 }
 
                                 bitmap.recycle()
-                                extractionStatus = "Extracted $frameCount frames"
+
+                                withContext(Dispatchers.Main) {
+                                    extractionStatus = "Extracted $frameCount frames"
+                                }
                             }
                         } catch (e: Exception) {
                             // Skip this frame
@@ -518,20 +798,26 @@ class DownloadViewModel : ViewModel() {
                         currentSecond += frameInterval
                     }
 
-                    extractedFramesCount = frameCount
-                    extractionStatus = "Extracted $extractedFramesCount frames"
+                    withContext(Dispatchers.Main) {
+                        extractedFramesCount = frameCount
+                        extractionStatus = "Extracted $extractedFramesCount frames"
+                    }
 
                     if (autoDeleteVideo && frameCount > 0) {
                         try {
                             videoFile.delete()
-                            downloadedVideoPath = null
+                            withContext(Dispatchers.Main) {
+                                downloadedVideoPath = null
+                            }
                         } catch (e: Exception) {
                             // Ignore deletion errors
                         }
                     }
 
                 } catch (e: Exception) {
-                    extractionStatus = "Extraction error: ${e.message}"
+                    withContext(Dispatchers.Main) {
+                        extractionStatus = "Extraction error: ${e.message}"
+                    }
                 } finally {
                     retriever.release()
                 }
@@ -540,10 +826,9 @@ class DownloadViewModel : ViewModel() {
             extractionStatus = "Extraction failed: ${e.message}"
         } finally {
             isExtractingFrames = false
-            refreshFileList()
+            debouncedRefresh() // Use debounced refresh
         }
     }
-
 
     fun extractFramesManually() {
         downloadedVideoPath?.let { path ->

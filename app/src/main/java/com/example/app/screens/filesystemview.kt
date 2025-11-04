@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
 data class FileSystemItem(
     val name: String,
     val path: String,
@@ -33,8 +35,8 @@ data class FileSystemItem(
     val type: String,
     val isDirectory: Boolean,
     val itemCount: Int = 0,
-    val frameNumber: Int? = null,  // NEW: Frame number for timestamp calculation
-    val videoUrl: String? = null   // NEW: Original video URL
+    val frameNumber: Int? = null,
+    val videoUrl: String? = null
 )
 
 @Composable
@@ -43,21 +45,37 @@ fun FileSystemItemView(
     onDelete: () -> Unit,
     onOpenFolder: () -> Unit,
     onOpenImage: () -> Unit,
-    onOpenAudio: () -> Unit
+    onOpenAudio: () -> Unit,
+    onCut: (FileSystemItem) -> Unit,
+    onPaste: (FileSystemItem, String) -> Unit,
+    currentPath: String,
+    isCut: Boolean = false // Pass this as parameter instead of checking inside
 ) {
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showPasteDialog by remember { mutableStateOf(false) }
+
+    // Pre-compute values outside of composition
+    val emoji = remember(item.isDirectory, item.type) {
+        if (item.isDirectory) "📁" else when (item.type) {
+            "Video" -> "🎥"
+            "Audio" -> "🎵"
+            "Image" -> "🖼️"
+            else -> "📄"
+        }
+    }
+
+    val formattedSize = remember(item.size) { formatFileSize(item.size) }
+    val formattedDate = remember(item.lastModified) { formatDate(item.lastModified) }
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
         onClick = {
-            if (item.isDirectory) {
-                onOpenFolder()
-            } else if (item.type == "Image") {
-                onOpenImage()
-            } else if (item.type == "Audio") {
-                onOpenAudio()
+            when {
+                item.isDirectory -> onOpenFolder()
+                item.type == "Image" -> onOpenImage()
+                item.type == "Audio" -> onOpenAudio()
             }
         }
     ) {
@@ -76,12 +94,7 @@ fun FileSystemItemView(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = if (item.isDirectory) "📁" else when (item.type) {
-                            "Video" -> "🎥"
-                            "Audio" -> "🎵"
-                            "Image" -> "🖼️"
-                            else -> "📄"
-                        },
+                        text = emoji,
                         style = MaterialTheme.typography.bodyLarge
                     )
                     Text(
@@ -89,6 +102,14 @@ fun FileSystemItemView(
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Medium
                     )
+
+                    if (isCut) {
+                        Text(
+                            text = "✂️",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -113,19 +134,41 @@ fun FileSystemItemView(
                         )
                     }
                     Text(
-                        text = formatFileSize(item.size),
+                        text = formattedSize,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = formatDate(item.lastModified),
+                        text = formattedDate,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-            IconButton(onClick = { showDeleteDialog = true }) {
-                Text("🗑️")
+
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(onClick = { onCut(item) }) {
+                    Text("✂️")
+                }
+
+                IconButton(
+                    onClick = { showPasteDialog = true },
+                    enabled = ClipboardManager.hasItem() && item.isDirectory
+                ) {
+                    Text(
+                        "📋",
+                        color = if (ClipboardManager.hasItem() && item.isDirectory)
+                            MaterialTheme.colorScheme.primary
+                        else
+                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                    )
+                }
+
+                IconButton(onClick = { showDeleteDialog = true }) {
+                    Text("🗑️")
+                }
             }
         }
     }
@@ -146,8 +189,8 @@ fun FileSystemItemView(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        onDelete()
                         showDeleteDialog = false
+                        onDelete()
                     }
                 ) {
                     Text("Delete", color = MaterialTheme.colorScheme.error)
@@ -160,24 +203,86 @@ fun FileSystemItemView(
             }
         )
     }
+
+    if (showPasteDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasteDialog = false },
+            title = { Text("Paste Item") },
+            text = {
+                Column {
+                    Text("Move '${ClipboardManager.cutItem?.name}' to '${item.name}'?")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "This will move the item from its original location to this folder.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        ClipboardManager.cutItem?.let { cutItem ->
+                            onPaste(cutItem, item.path)
+                        }
+                        showPasteDialog = false
+                    }
+                ) {
+                    Text("Move")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasteDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
 }
 
-fun formatFileSize(size: Long): String {
-    val kb = size / 1024.0
-    val mb = kb / 1024.0
-    val gb = mb / 1024.0
+@Composable
+fun PasteButton(
+    modifier: Modifier = Modifier,
+    currentPath: String,
+    onPaste: (FileSystemItem, String) -> Unit
+) {
+    if (ClipboardManager.hasItem()) {
+        TextButton(
+            onClick = {
+                ClipboardManager.cutItem?.let { cutItem ->
+                    onPaste(cutItem, currentPath)
+                }
+            },
+            modifier = modifier,
+            enabled = ClipboardManager.hasItem()
+        ) {
+            Text("📋 Paste to Current Folder")
+        }
+    }
+}
 
-    return when {
-        gb >= 1 -> String.format("%.2f GB", gb)
-        mb >= 1 -> String.format("%.2f MB", mb)
-        kb >= 1 -> String.format("%.2f KB", kb)
-        else -> "$size B"
+// Cache formatted values
+private val sizeCache = mutableMapOf<Long, String>()
+private val dateCache = mutableMapOf<Long, String>()
+
+fun formatFileSize(size: Long): String {
+    return sizeCache.getOrPut(size) {
+        val kb = size / 1024.0
+        val mb = kb / 1024.0
+        val gb = mb / 1024.0
+
+        when {
+            gb >= 1 -> String.format("%.2f GB", gb)
+            mb >= 1 -> String.format("%.2f MB", mb)
+            kb >= 1 -> String.format("%.2f KB", kb)
+            else -> "$size B"
+        }
     }
 }
 
 fun formatDate(timestamp: Long): String {
-    val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
-    return sdf.format(Date(timestamp))
+    return dateCache.getOrPut(timestamp) {
+        val sdf = SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault())
+        sdf.format(Date(timestamp))
+    }
 }
-
-

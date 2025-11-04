@@ -21,6 +21,10 @@ selenium = "4.20.0"
 jsoup = "1.17.2"
 ui = "1.9.2"
 foundation = "1.9.4"
+foundationLayout = "1.9.4"
+runtime = "1.9.4"
+material3 = "1.4.0"
+uiText = "1.9.4"
 [libraries]
 androidx-compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
 
@@ -51,6 +55,10 @@ selenium-java = { module = "org.seleniumhq.selenium:selenium-java", version.ref 
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 androidx-ui = { group = "androidx.compose.ui", name = "ui", version.ref = "ui" }
 androidx-foundation = { group = "androidx.compose.foundation", name = "foundation", version.ref = "foundation" }
+androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundationLayout" }
+androidx-compose-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
+androidx-compose-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
+androidx-compose-ui-text = { group = "androidx.compose.ui", name = "ui-text", version.ref = "uiText" }
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
